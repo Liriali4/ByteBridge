@@ -1,0 +1,281 @@
+﻿<programa> ::= <declaracaoPacote> <listaImportacoes> <listaTipos>
+
+<declaracaoPacote> ::= "package" <nomePacote> ";"
+
+<nomePacote> ::= <nomeTipo>
+
+<listaImportacoes> ::= <declaracaoImportacao> <listaImportacoes> | ε
+
+<declaracaoImportacao> ::= "import" <nomeTipo> <importacaoOpcional> ";"
+
+<importacaoOpcional> ::= "." "*" | ε
+
+
+<listaTipos> ::= <declaracaoTipo> <listaTipos> | ε
+
+<declaracaoTipo> ::= <declaracaoClasse>
+
+<declaracaoClasse> ::= 
+    "class" <identificador> <herancaOpcional> <corpoClasse>
+
+<herancaOpcional> ::= "extends" <tipo> | ε
+
+<corpoClasse> ::= "{" <listaMembrosClasse> "}"
+
+<listaMembrosClasse> ::= <membroClasse> <listaMembrosClasse> | ε
+
+<membroClasse> ::= 
+      <declaracaoAtributo>
+    | <declaracaoMetodo>
+    | <metodoPrincipal>
+
+<declaracaoAtributo> ::= 
+    <modificadores> <tipo> <declaradoresVariavel> ";"
+
+<declaracaoMetodo> ::= 
+    <modificadores> <tipo> <identificador> <parametros> <corpoMetodo>
+
+<metodoPrincipal> ::= 
+    "public" "static" "void" "main"
+    "(" "String" "[" "]" <identificador> ")"
+    <corpoMetodo>
+
+
+<modificadores> ::= <modificador> <modificadores> | ε
+
+<modificador> ::= 
+    "public" | "private" | "protected" | "static" | "final"
+
+
+<tipo> ::= <tipoBase> <sufixoArray>
+
+<tipoBase> ::= <tipoPrimitivo> | <tipoClasse>
+
+<tipoPrimitivo> ::= 
+    "int" | "double" | "boolean" | "char" | "float" | "long"
+
+<tipoClasse> ::= <nomeTipo>
+
+<nomeTipo> ::= <identificador> <continuaNomeTipo>
+
+<continuaNomeTipo> ::= "." <identificador> <continuaNomeTipo> | ε
+
+<sufixoArray> ::= "[" "]" <sufixoArray> | ε
+
+
+<declaradoresVariavel> ::= 
+    <declaradorVariavel> <continuaDeclaradores>
+
+<continuaDeclaradores> ::= 
+    "," <declaradorVariavel> <continuaDeclaradores> | ε
+
+<declaradorVariavel> ::= 
+    <identificador> <dimensoesOpcional> <inicializacaoOpcional>
+
+<dimensoesOpcional> ::= "[" "]" <dimensoesOpcional> | ε
+
+<inicializacaoOpcional> ::= 
+    "=" <expressao>
+    | "=" <inicializadorArray>
+    | ε
+
+<inicializadorArray> ::= 
+    "{" <listaInicializadores> "}"
+
+<listaInicializadores> ::= 
+    <expressao> <continuaInicializadores> | ε
+
+<continuaInicializadores> ::= 
+    "," <expressao> <continuaInicializadores> | ε
+
+
+<parametros> ::= "(" <listaParametrosOpcional> ")"
+
+<listaParametrosOpcional> ::= <listaParametros> | ε
+
+<listaParametros> ::= <parametro> <continuaParametros>
+
+<continuaParametros> ::= "," <parametro> <continuaParametros> | ε
+
+<parametro> ::= <tipo> <identificador>
+
+
+<corpoMetodo> ::= "{" <listaComandos> "}"
+
+<listaComandos> ::= <comando> <listaComandos> | ε
+
+<comando> ::= 
+      <comandoExpressao>
+    | <declaracaoVariavelLocal>
+    | <comandoIf>
+    | <comandoWhile>
+    | <comandoFor>
+    | <comandoSwitch>
+    | <comandoReturn>
+    | <comandoBreak>
+    | <comandoContinue>
+    | <bloco>
+
+
+<bloco> ::= "{" <listaComandos> "}"
+
+
+<comandoIf> ::= 
+    "if" "(" <expressao> ")" <comando> <senaoOpcional>
+
+<senaoOpcional> ::= "else" <comando> | ε
+
+
+<comandoWhile> ::= 
+    "while" "(" <expressao> ")" <comando>
+
+
+<comandoFor> ::= 
+    "for" "(" <expressaoOpcional> ";" <expressaoOpcional> ";" <expressaoOpcional> ")" <comando>
+
+<expressaoOpcional> ::= <expressao> | ε
+
+
+<comandoReturn> ::= 
+    "return" <expressaoOpcional> ";"
+
+
+<comandoBreak> ::= "break" ";"
+
+<comandoContinue> ::= "continue" ";"
+
+
+<comandoExpressao> ::= <expressao> ";"
+
+
+<declaracaoVariavelLocal> ::= 
+    <tipo> <declaradoresVariavel> ";"
+
+<expressao> ::= <expressaoAtribuicao>
+
+<expressaoAtribuicao> ::= 
+    <expressaoCondicional> <continuaAtribuicao>
+
+<continuaAtribuicao> ::= 
+    <operadorAtribuicao> <expressaoCondicional> <continuaAtribuicao>
+    | ε
+
+
+<expressaoCondicional> ::= 
+    <expressaoOr> <continuaCondicional>
+
+<continuaCondicional> ::= 
+    "?" <expressao> ":" <expressaoCondicional>
+    | ε
+
+<expressaoOr> ::= <expressaoAnd> <continuaOr>
+
+<continuaOr> ::= "||" <expressaoAnd> <continuaOr> | ε
+
+<expressaoAnd> ::= <expressaoBitOr> <continuaAnd>
+
+<continuaAnd> ::= "&&" <expressaoBitOr> <continuaAnd> | ε
+
+
+<expressaoBitOr> ::= <expressaoBitXor> <continuaBitOr>
+
+<continuaBitOr> ::= "|" <expressaoBitXor> <continuaBitOr> | ε
+
+<expressaoBitXor> ::= <expressaoBitAnd> <continuaBitXor>
+
+<continuaBitXor> ::= "^" <expressaoBitAnd> <continuaBitXor> | ε
+
+<expressaoBitAnd> ::= <expressaoIgualdade> <continuaBitAnd>
+
+<continuaBitAnd> ::= "&" <expressaoIgualdade> <continuaBitAnd> | ε
+
+<expressaoIgualdade> ::= <expressaoRelacional> <continuaIgualdade>
+
+<continuaIgualdade> ::= 
+    "==" <expressaoRelacional> <continuaIgualdade>
+    | "!=" <expressaoRelacional> <continuaIgualdade>
+    | ε
+
+
+<expressaoRelacional> ::= <expressaoAditiva> <continuaRelacional>
+
+<continuaRelacional> ::= 
+    "<" <expressaoAditiva> <continuaRelacional>
+    | ">" <expressaoAditiva> <continuaRelacional>
+    | "<=" <expressaoAditiva> <continuaRelacional>
+    | ">=" <expressaoAditiva> <continuaRelacional>
+    | ε
+
+
+<expressaoAditiva> ::= <expressaoMultiplicativa> <continuaAditiva>
+
+<continuaAditiva> ::= 
+    "+" <expressaoMultiplicativa> <continuaAditiva>
+    | "-" <expressaoMultiplicativa> <continuaAditiva>
+    | ε
+
+
+<expressaoMultiplicativa> ::= <expressaoUnaria> <continuaMultiplicativa>
+
+<continuaMultiplicativa> ::= 
+    "*" <expressaoUnaria> <continuaMultiplicativa>
+    | "/" <expressaoUnaria> <continuaMultiplicativa>
+    | "%" <expressaoUnaria> <continuaMultiplicativa>
+    | ε
+
+
+<expressaoUnaria> ::= <listaUnarios> <expressaoPosfixa>
+
+<listaUnarios> ::= <operadorUnario> <listaUnarios> | ε
+
+<operadorUnario> ::= "+" | "-" | "!" | "++" | "--"
+
+
+<expressaoPosfixa> ::= <primario> <continuaPosfixa>
+
+<continuaPosfixa> ::= 
+    "[" <expressao> "]" <continuaPosfixa>
+    | "(" <listaArgumentosOpcional> ")" <continuaPosfixa>
+    | "." <identificador> <continuaPosfixa>
+    | "++" <continuaPosfixa>
+    | "--" <continuaPosfixa>
+    | ε
+
+
+<listaArgumentosOpcional> ::= <listaArgumentos> | ε
+
+<listaArgumentos> ::= <expressao> <continuaArgumentos>
+
+<continuaArgumentos> ::= "," <expressao> <continuaArgumentos> | ε
+
+<primario> ::= 
+      <literal>
+    | <identificador>
+    | "this"
+    | "super"
+    | "(" <expressao> ")"
+    | <criacaoObjeto>
+    | <criacaoArray>
+
+
+<criacaoObjeto> ::= 
+    "new" <tipoClasse> "(" <listaArgumentosOpcional> ")"
+
+<criacaoArray> ::= 
+    "new" <tipoBase> <dimensoesCriacao>
+
+<dimensoesCriacao> ::= 
+    "[" <expressao> "]" <dimensoesCriacaoRestante>
+
+<dimensoesCriacaoRestante> ::= 
+    "[" <expressao> "]" <dimensoesCriacaoRestante>
+    | ε
+
+
+<literal> ::= 
+    <literalInteiro>
+    | <literalFloat>
+    | <literalBooleano>
+    | <literalString>
+    | <literalChar>
+    | <literalNull>
