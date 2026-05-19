@@ -1,18 +1,19 @@
 package lexer;
 
+
 import java.util.ArrayList;
+import java.util.List;
 
 public class TabelaSimbolos {
-    private ArrayList<Token> tabela = new ArrayList<>();
+    private List<Token> simbolos = new ArrayList<>();
 
     public void adicionar(Token t) {
-        tabela.add(t);
+        simbolos.add(t);
     }
 
     public void mostrar() {
-        System.out.println("\n--- TABELA DE SÍMBOLOS ---");
-        for (Token t : tabela) {
-            System.out.println(t.lexema + " -> " + t.tipo);
+        for (Token t : simbolos) {
+            System.out.println(t);
         }
     }
 }

@@ -1,11 +1,19 @@
 package lexer;
 
+/**
+ * Classe Token - Representa um token reconhecido pelo analisador léxico
+ */
 public class Token {
     public String lexema;
-    public String tipo;
-
-    public Token(String lexema, String tipo) {
+    public int codigo;
+    
+    public Token(String lexema, int codigo) {
         this.lexema = lexema;
-        this.tipo = tipo;
+        this.codigo = codigo;
+    }
+    
+    @Override
+    public String toString() {
+        return AnalisadorLexico.getNomeToken(codigo) + ": " + lexema;
     }
 }

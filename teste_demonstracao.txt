@@ -1,0 +1,81 @@
+// DEMONSTRAÇÃO COMPLETA DO ANALISADOR LÉXICO
+// Compiladores - Primeira Fase
+
+// 1. PALAVRAS RESERVADAS (8 palavras)
+int idade;
+float altura;
+if (idade >= 18) {
+    return idade;
+}
+while (altura < 2.0) {
+    altura = altura + 0.1;
+}
+class Pessoa {
+    public void falar() {
+        // método
+    }
+}
+
+// 2. IDENTIFICADORES
+x
+variavel
+_underscore
+abc123
+CamelCase
+MAIUSCULA
+
+// 3. NÚMEROS
+// Inteiros
+0
+42
+1000
+// Reais
+3.14
+0.5
+99.99
+
+// 4. OPERADORES ARITMÉTICOS
+a = 10 + 5;
+b = 20 - 3;
+c = 4 * 7;
+d = 15 / 3;
+e = 10 % 3;
+
+// 5. OPERADORES RELACIONAIS
+x < y
+x > y
+x <= y
+x >= y
+x == y
+x != y
+
+// 6. OPERADORES LÓGICOS
+(a > 0) && (b < 10)
+(x == y) || (z != w)
+
+// 7. DELIMITADORES
+( ) { } [ ] ; , .
+
+// 8. STRINGS
+"hello"
+"mundo"
+"teste 123"
+
+// 9. COMENTÁRIOS
+// Este é um comentário de linha
+
+/* Este é um
+   comentário de
+   bloco */
+
+/* Comentário com código:
+   int x = 10;
+   return x;
+*/
+
+// 10. CASOS DE ERRO
+!
+&
+|
+
+// FIM DA DEMONSTRAÇÃO

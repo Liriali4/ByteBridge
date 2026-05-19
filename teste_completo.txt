@@ -1,0 +1,71 @@
+// Teste completo do analisador léxico
+
+// Palavras reservadas
+int x;
+float y;
+if (x > 0) {
+    return x;
+}
+while (y < 10.5) {
+    y = y + 1.0;
+}
+class MinhaClasse {
+    public void metodo() {
+        // código
+    }
+}
+
+// Identificadores
+variavel
+_underscore
+abc123
+CamelCase
+
+// Números inteiros
+0
+123
+9999
+
+// Números reais
+3.14
+0.5
+123.456
+
+// Operadores aritméticos
+x = 10 + 5;
+y = 20 - 3;
+z = 4 * 7;
+w = 15 / 3;
+mod = 10 % 3;
+
+// Operadores relacionais
+a < b
+c > d
+e <= f
+g >= h
+i == j
+k != l
+
+// Operadores lógicos
+(x > 0) && (y < 10)
+(a == b) || (c != d)
+
+// Símbolos especiais
+( ) { } [ ] ; , .
+
+// Strings
+"hello world"
+"teste 123"
+"string com espaços"
+
+// Comentários
+// este é um comentário
+x = 5; // comentário no final da linha
+
+// Casos de erro (devem ser detectados)
+!
+&
+|
+@
+#
+$

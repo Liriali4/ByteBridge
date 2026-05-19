@@ -1,10 +1,16 @@
 package utils;
 
-public class TipoToken {
-    public static final String IDENTIFICADOR = "IDENTIFICADOR";
-    public static final String NUMERO = "NUMERO";
-    public static final String OPERADOR = "OPERADOR";
-    public static final String RELACIONAL = "RELACIONAL";
-    public static final String RESERVADA = "RESERVADA";
-    public static final String SIMBOLO = "SIMBOLO";
+public enum TipoToken {
+    IDENTIFICADOR, 
+    RESERVADA, 
+    NUMERO_INTEIRO,
+    NUMERO_REAL,
+    OPERADOR_ARITMETICO,
+    OPERADOR_RELACIONAL,
+    OPERADOR_LOGICO,
+    SIMBOLO, 
+    FIM_ARQUIVO,
+    ERRO, 
+    COMENTARIO, 
+    LITERAL_STRING
 }

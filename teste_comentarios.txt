@@ -1,0 +1,21 @@
+// Teste de comentários
+
+// Comentário de linha simples
+int x = 5;
+
+/* Comentário de bloco simples */
+float y = 3.14;
+
+/* Comentário
+   de múltiplas
+   linhas */
+while (x > 0) {
+    x = x - 1;
+}
+
+/* Comentário com código dentro
+   int z = 10;
+   return z;
+*/
+
+// Fim do teste
