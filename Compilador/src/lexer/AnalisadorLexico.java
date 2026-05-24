@@ -56,6 +56,15 @@ public class AnalisadorLexico {
     public static final int TOKEN_COMENTARIO = 36;
     public static final int TOKEN_FIM_ARQUIVO = 37;
     public static final int TOKEN_ERRO = 38;
+    public static final int TOKEN_OP_INCREMENTO = 39;
+    public static final int TOKEN_OP_DECREMENTO = 40;
+    public static final int TOKEN_OP_NOT = 41;
+    public static final int TOKEN_CHAR_LITERAL = 42;
+    public static final int TOKEN_DOIS_PONTOS = 43;
+    public static final int TOKEN_OP_BIT_AND = 44;
+    public static final int TOKEN_OP_BIT_OR = 45;
+    public static final int TOKEN_OP_BIT_XOR = 46;
+    public static final int TOKEN_INTERROGACAO = 47;
     
     // ========== ATRIBUTOS ==========
     private char[] conteudo;
@@ -148,8 +157,8 @@ public class AnalisadorLexico {
                         estado = 90; // número
                     }
                     // Operadores e símbolos
-                    else if (c == '+') return new Token("+", TOKEN_OP_ADICAO);
-                    else if (c == '-') return new Token("-", TOKEN_OP_SUBTRACAO);
+                    else if (c == '+') estado = 112; // + ou ++
+                    else if (c == '-') estado = 113; // - ou --
                     else if (c == '*') return new Token("*", TOKEN_OP_MULTIPLICACAO);
                     else if (c == '%') return new Token("%", TOKEN_OP_MODULO);
                     else if (c == '/') estado = 100; // divisão ou comentário
@@ -158,7 +167,7 @@ public class AnalisadorLexico {
                     else if (c == '=') estado = 103; // = ou ==
                     else if (c == '!') estado = 104; // !=
                     else if (c == '&') estado = 105; // &&
-                    else if (c == '|') estado = 106; // ||
+                    else if (c == '|') estado = 106; // || ou |
                     else if (c == '(') return new Token("(", TOKEN_ABRE_PARENTESE);
                     else if (c == ')') return new Token(")", TOKEN_FECHA_PARENTESE);
                     else if (c == '{') return new Token("{", TOKEN_ABRE_CHAVE);
@@ -169,6 +178,10 @@ public class AnalisadorLexico {
                     else if (c == ',') return new Token(",", TOKEN_VIRGULA);
                     else if (c == '.') return new Token(".", TOKEN_PONTO);
                     else if (c == '"') estado = 110; // string
+                    else if (c == '\'') estado = 114; // char
+                    else if (c == ':') return new Token(":", TOKEN_DOIS_PONTOS);
+                    else if (c == '^') return new Token("^", TOKEN_OP_BIT_XOR);
+                    else if (c == '?') return new Token("?", TOKEN_INTERROGACAO);
                     else return new Token(String.valueOf(c), TOKEN_ERRO);
                     break;
                 
@@ -755,7 +768,7 @@ public class AnalisadorLexico {
                         return new Token("!=", TOKEN_OP_DIFERENTE);
                     } else {
                         voltarCaractere();
-                        return new Token("!", TOKEN_ERRO);
+                        return new Token("!", TOKEN_OP_NOT);
                     }
                 
                 case 105: // &&
@@ -764,7 +777,7 @@ public class AnalisadorLexico {
                         return new Token("&&", TOKEN_OP_AND);
                     } else {
                         voltarCaractere();
-                        return new Token("&", TOKEN_ERRO);
+                        return new Token("&", TOKEN_OP_BIT_AND);
                     }
                 
                 case 106: // ||
@@ -773,7 +786,7 @@ public class AnalisadorLexico {
                         return new Token("||", TOKEN_OP_OR);
                     } else {
                         voltarCaractere();
-                        return new Token("|", TOKEN_ERRO);
+                        return new Token("|", TOKEN_OP_BIT_OR);
                     }
                 
                 case 107: // Comentário de linha
@@ -834,6 +847,42 @@ public class AnalisadorLexico {
                         estado = 110; // volta para string
                     }
                     break;
+
+                case 112: // + ou ++
+                    c = lerCaractere();
+                    if (c == '+') {
+                        return new Token("++", TOKEN_OP_INCREMENTO);
+                    }
+                    voltarCaractere();
+                    return new Token("+", TOKEN_OP_ADICAO);
+
+                case 113: // - ou --
+                    c = lerCaractere();
+                    if (c == '-') {
+                        return new Token("--", TOKEN_OP_DECREMENTO);
+                    }
+                    voltarCaractere();
+                    return new Token("-", TOKEN_OP_SUBTRACAO);
+
+                case 114: // literal char
+                    c = lerCaractere();
+                    if (c == '\0' || c == '\n') {
+                        return new Token(lexema.toString(), TOKEN_ERRO);
+                    }
+                    lexema.append(c);
+                    if (c == '\\') {
+                        c = lerCaractere();
+                        if (c == '\0' || c == '\n') {
+                            return new Token(lexema.toString(), TOKEN_ERRO);
+                        }
+                        lexema.append(c);
+                    }
+                    c = lerCaractere();
+                    if (c == '\'') {
+                        lexema.append(c);
+                        return new Token(lexema.toString(), TOKEN_CHAR_LITERAL);
+                    }
+                    return new Token(lexema.toString(), TOKEN_ERRO);
                 
                 default:
                     return new Token("ERRO_INTERNO", TOKEN_ERRO);
@@ -911,6 +960,10 @@ public class AnalisadorLexico {
     public TabelaSimbolos getTabelaSimbolos() {
         return tabela;
     }
+
+    public int getLinhaAtual() {
+        return linha;
+    }
     
     /**
      * Retorna nome do token pelo código
@@ -955,6 +1008,15 @@ public class AnalisadorLexico {
             case TOKEN_COMENTARIO: return "COMENTARIO";
             case TOKEN_FIM_ARQUIVO: return "FIM_ARQUIVO";
             case TOKEN_ERRO: return "ERRO";
+            case TOKEN_OP_INCREMENTO: return "OP_INCREMENTO";
+            case TOKEN_OP_DECREMENTO: return "OP_DECREMENTO";
+            case TOKEN_OP_NOT: return "OP_NOT";
+            case TOKEN_CHAR_LITERAL: return "CHAR_LITERAL";
+            case TOKEN_DOIS_PONTOS: return "DOIS_PONTOS";
+            case TOKEN_OP_BIT_AND: return "OP_BIT_AND";
+            case TOKEN_OP_BIT_OR: return "OP_BIT_OR";
+            case TOKEN_OP_BIT_XOR: return "OP_BIT_XOR";
+            case TOKEN_INTERROGACAO: return "INTERROGACAO";
             default: return "DESCONHECIDO";
         }
     }

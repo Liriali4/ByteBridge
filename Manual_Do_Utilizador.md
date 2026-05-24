@@ -1,242 +1,105 @@
 # Manual do Utilizador
-## Analisador Léxico - Compiladores
 
-### 1. Introdução
+## 1. Vis?o geral
 
-Este manual destina-se a utilizadores que pretendem executar o Analisador Léxico para análise de código fonte. O analisador reconhece tokens de uma linguagem de programação simplificada, incluindo palavras reservadas, identificadores, números, operadores e comentários.
+Este projeto implementa duas fases do compilador acad?mico:
+- Fase 1: Analisador L?xico.
+- Fase 2: Analisador Sint?tico (descendente recursivo, estilo LL(1)) com recupera??o de erros.
 
-### 2. Requisitos do Sistema
+A gram?tica oficial da Fase 2 est? em `java_grammar.txt`.
 
-- Java Development Kit (JDK) 8 ou superior
-- Sistema operacional: Windows, Linux ou macOS
-- Mínimo 256 MB de RAM
-- 50 MB de espaço em disco
+## 2. Estrutura de ficheiros relevante
 
-### 3. Instalação
+- `Compilador/src/lexer`: implementa??o do lexer.
+- `Compilador/src/parser`: implementa??o do parser.
+- `Compilador/src/symbols`: tabela de s?mbolos por escopo.
+- `Compilador/src/errors`: modelo de erros sint?ticos.
+- `Compilador/src/Main/Main.java`: ponto de entrada atual (pipeline l?xico + sint?tico).
+- `teste_parser_valido.java`: caso v?lido.
+- `teste_parser_erros.java`: caso inv?lido para validar recupera??o.
 
-#### 3.1. Verificar Instalação do Java
+## 3. Como compilar
 
-Abra o terminal/prompt de comando e execute:
-
-```bash
-java -version
-```
-
-Se o Java não estiver instalado, faça o download em: https://www.oracle.com/java/technologies/downloads/
-
-#### 3.2. Obter o Compilador
-
-1. Faça o download ou clone o repositório do projeto
-2. Navegue até a pasta `Compilador/Compilador`
-
-### 4. Como Usar
-
-#### 4.1. Preparar o Arquivo de Entrada
-
-Crie um arquivo de texto (por exemplo, `codigo.txt`) com o código fonte que deseja analisar. O arquivo deve conter código na linguagem suportada pelo analisador.
-
-Exemplo de conteúdo válido:
-
-```
-int x = 10;
-float y = 3.14;
-if (x > 5) {
-    return x + y;
-}
-while (x != 0) {
-    x = x - 1;
-}
-```
-
-#### 4.2. Executar o Analisador
-
-##### Opção 1: Usando o arquivo padrão (codigo.txt)
+Na raiz do projeto:
 
 ```bash
-java -cp build Main.Main
+javac -d Compilador/build/classes Compilador/src/Main/Main.java Compilador/src/lexer/*.java Compilador/src/utils/*.java Compilador/src/parser/*.java Compilador/src/symbols/*.java Compilador/src/errors/*.java Compilador/src/ast/*.java
 ```
 
-##### Opção 2: Especificando um arquivo
+## 4. Como executar
+
+### 4.1 Execu??o completa (Fase 1 + Fase 2)
 
 ```bash
-java -cp build Main.Main caminho/para/seu/arquivo.txt
+java -cp Compilador/build/classes Main.Main <ficheiro>
 ```
 
-##### Opção 3: Compilar e executar (se necessário)
+Exemplos:
 
 ```bash
-# Compilar
-javac -d build Compilador/src/Main/Main.java Compilador/src/lexer/*.java Compilador/src/utils/*.java
-
-# Executar
-java -cp build Main.Main codigo.txt
+java -cp Compilador/build/classes Main.Main teste_parser_valido.java
+java -cp Compilador/build/classes Main.Main teste_parser_erros.java
 ```
 
-#### 4.3. Interpretar os Resultados
+## 5. Formato de entrada
 
-O analisador exibirá uma tabela com todos os tokens reconhecidos:
+- C?digo Java no subconjunto definido por `java_grammar.txt`.
+- A produ??o `<programa>` exige `package` no in?cio.
 
-```
-╔════════════════════════════════════════════════╗
-║   ANALISADOR LÉXICO - DFA (60+ ESTADOS)       ║
-║   Compiladores - Primeira Fase                 ║
-╚════════════════════════════════════════════════╝
+Exemplo v?lido curto:
 
-Arquivo: codigo.txt
-─────────────────────────────────────────────────
-
-╔════════════════════════════════════════════════╗
-║           TABELA DE SÍMBOLOS                   ║
-╚════════════════════════════════════════════════╝
-
-INT: int
-IDENTIFICADOR: x
-OP_ATRIBUICAO: =
-NUMERO_INTEIRO: 10
-PONTO_VIRGULA: ;
-...
-```
-
-### 5. Tokens Reconhecidos
-
-#### 5.1. Palavras Reservadas
-- `if`, `while`, `int`, `float`, `return`, `class`, `public`, `void`
-
-#### 5.2. Identificadores
-- Começam com letra ou underscore
-- Podem conter letras, dígitos e underscores
-- Exemplos: `x`, `contador`, `_temp`, `valor1`
-
-#### 5.3. Números
-- Inteiros: `0`, `123`, `9999`
-- Reais: `3.14`, `0.5`, `123.456`
-
-#### 5.4. Operadores
-
-##### Aritméticos
-- `+` (adição)
-- `-` (subtração)
-- `*` (multiplicação)
-- `/` (divisão)
-- `%` (módulo)
-
-##### Relacionais
-- `<` (menor)
-- `>` (maior)
-- `<=` (menor ou igual)
-- `>=` (maior ou igual)
-- `==` (igual)
-- `!=` (diferente)
-
-##### Lógicos
-- `&&` (AND)
-- `||` (OR)
-
-##### Atribuição
-- `=`
-
-#### 5.5. Delimitadores
-- `(` `)` - parênteses
-- `{` `}` - chaves
-- `[` `]` - colchetes
-- `;` - ponto e vírgula
-- `,` - vírgula
-- `.` - ponto
-
-#### 5.6. Strings
-- Delimitadas por aspas duplas: `"texto"`
-- Suportam caracteres de escape: `"linha1\nlinha2"`
-
-#### 5.7. Comentários
-- Linha única: `// comentário`
-- Bloco: `/* comentário em múltiplas linhas */`
-
-### 6. Tratamento de Erros
-
-O analisador identifica os seguintes erros:
-
-- Caracteres inválidos
-- Strings não fechadas
-- Comentários de bloco não fechados
-- Números mal formados (ex: `3.14.5`)
-- Operadores incompletos (ex: `&` sozinho)
-
-Quando um erro é encontrado, o token é marcado como `ERRO` na tabela de símbolos.
-
-### 7. Exemplos de Uso
-
-#### Exemplo 1: Análise de Declarações
-
-Arquivo `teste1.txt`:
-```
-int x = 5;
-float pi = 3.14;
-```
-
-Saída:
-```
-INT: int
-IDENTIFICADOR: x
-OP_ATRIBUICAO: =
-NUMERO_INTEIRO: 5
-PONTO_VIRGULA: ;
-FLOAT: float
-IDENTIFICADOR: pi
-OP_ATRIBUICAO: =
-NUMERO_REAL: 3.14
-PONTO_VIRGULA: ;
-```
-
-#### Exemplo 2: Análise de Estruturas de Controle
-
-Arquivo `teste2.txt`:
-```
-if (x > 10) {
-    return x;
+```java
+package exemplo;
+public class A {
+    public int soma(int a, int b) {
+        int c = a + b;
+        return c;
+    }
 }
 ```
 
-Saída:
-```
-IF: if
-ABRE_PARENTESE: (
-IDENTIFICADOR: x
-OP_MAIOR: >
-NUMERO_INTEIRO: 10
-FECHA_PARENTESE: )
-ABRE_CHAVE: {
-RETURN: return
-IDENTIFICADOR: x
-PONTO_VIRGULA: ;
-FECHA_CHAVE: }
+Exemplo inv?lido curto:
+
+```java
+public class A {
+    int x
+    public void m() {
+        y = 10;
+    }
+}
 ```
 
-### 8. Resolução de Problemas
+## 6. Formato de sa?da
 
-#### Problema: "java: command not found"
-**Solução:** Instale o JDK ou adicione o Java ao PATH do sistema.
+A execu??o imprime:
+- cabe?alho de execu??o;
+- resultado da an?lise sint?tica (sucesso ou lista de erros);
+- tabela de s?mbolos por escopo.
 
-#### Problema: "Error: Could not find or load main class Main.Main"
-**Solução:** Verifique se está executando o comando na pasta correta e se os arquivos .class foram compilados.
+## 7. Interpreta??o de erros
 
-#### Problema: Arquivo não encontrado
-**Solução:** Verifique o caminho do arquivo de entrada. Use caminhos relativos ou absolutos corretos.
+### 7.1 Erros l?xicos
 
-#### Problema: Tokens não reconhecidos
-**Solução:** Verifique se o código fonte está na sintaxe suportada pelo analisador.
+O lexer emite `TOKEN_ERRO` para lexemas inv?lidos (por exemplo, string mal fechada, s?mbolo inv?lido).
+Esses tokens s?o propagados para o parser e acabam reportados como erro sint?tico no contexto onde aparecem.
 
-### 9. Limitações
+### 7.2 Erros sint?ticos
 
-- O analisador reconhece apenas a sintaxe léxica, não valida a sintaxe da linguagem
-- Não suporta caracteres Unicode especiais
-- Strings devem estar em uma única linha (sem quebras de linha literais)
-- Comentários aninhados não são suportados
+Formato padr?o:
 
-### 10. Suporte
+```text
+Erro Sintatico na linha X [contexto]: esperado <...>, mas encontrado <...>
+```
 
-Para questões técnicas ou reportar problemas, consulte a documentação do projeto ou entre em contato com a equipe de desenvolvimento.
+O parser tenta recuperar com modo p?nico para continuar a an?lise e reportar m?ltiplos erros.
 
----
+## 8. Estrutura dos testes
 
-**Versão:** 2.0  
-**Última atualização:** 2024
+- `teste_parser_valido.java`: valida fluxo normal sem erros.
+- `teste_parser_erros.java`: valida dete??o de erros + recupera??o.
+- Podem ser criados ficheiros adicionais na raiz e executados com o mesmo comando do `Main`.
+
+## 9. Observa??es pr?ticas
+
+- Se aparecerem muitos erros, come?ar pelos primeiros da lista.
+- O projeto est? preparado para evolu??o para Fase 3 (sem?ntica), mas sem?ntica ainda n?o est? implementada.
