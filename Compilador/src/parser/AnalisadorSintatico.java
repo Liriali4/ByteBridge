@@ -17,6 +17,16 @@ public class AnalisadorSintatico {
             "package", "import", "class", "extends", "public", "private", "protected", "static", "final",
             "void", "if", "else", "while", "for", "return", "break", "continue", "new", "this", "super",
             "true", "false", "null", "int", "double", "boolean", "char", "float", "long", "String"));
+    private static final Set<String> SINCRONIZACAO_DECLARACAO = new HashSet<String>(Arrays.asList(
+            ";", "}", "class", "public", "private", "protected", "static", "final", "void",
+            "int", "double", "boolean", "char", "float", "long", "String"));
+    private static final Set<String> SINCRONIZACAO_BLOCO = new HashSet<String>(Arrays.asList(
+            "}", "{", "if", "while", "for", "return", "break", "continue", "int", "double",
+            "boolean", "char", "float", "long", "String"));
+    private static final Set<String> SINCRONIZACAO_EXPRESSAO = new HashSet<String>(Arrays.asList(
+            ";", ")", "]", ",", "}", ":", "{"));
+    private static final Set<String> SINCRONIZACAO_ESTRUTURA = new HashSet<String>(Arrays.asList(
+            ")", "{", "}", ";", "else"));
 
     private final AnalisadorLexico lexer;
     private final TabelaSimbolos tabelaSimbolos = new TabelaSimbolos();
@@ -24,6 +34,7 @@ public class AnalisadorSintatico {
     private Token tokenAtual;
     private Token tokenSeguinte;
     private int contadorBlocos = 0;
+    private String ultimoErro = "";
 
     public AnalisadorSintatico(AnalisadorLexico lexer) {
         this.lexer = lexer;
@@ -37,6 +48,7 @@ public class AnalisadorSintatico {
             analisarDeclaracaoPacote();
         } else {
             relatarErro("'package'", "inicio do programa");
+            sincronizar(new HashSet<String>(Arrays.asList("import", "class", "public", "private", "protected")));
         }
 
         while (ehLexema("import")) {
@@ -67,6 +79,9 @@ public class AnalisadorSintatico {
             tokenLido = lexer.analex();
             tokenLido.linha = lexer.getLinhaAtual();
         } while (tokenLido.codigo == AnalisadorLexico.TOKEN_COMENTARIO);
+        if (tokenLido.codigo == AnalisadorLexico.TOKEN_ERRO) {
+            listaErros.add(new ErroSintatico(tokenLido.linha, "token valido", "'" + tokenLido.lexema + "' (ERRO)", "analise lexica"));
+        }
         return tokenLido;
     }
 
@@ -107,6 +122,12 @@ public class AnalisadorSintatico {
             return tokenConsumido;
         }
         relatarErro("'" + lexema + "'", contexto);
+        if (ehLexemaSeguinte(lexema)) {
+            avancar();
+            Token tokenConsumido = tokenAtual;
+            avancar();
+            return tokenConsumido;
+        }
         return sintetico(lexema);
     }
 
@@ -129,7 +150,11 @@ public class AnalisadorSintatico {
     }
 
     private void relatarErro(String esperado, String contexto) {
-        listaErros.add(new ErroSintatico(tokenAtual.linha, esperado, descrever(tokenAtual), contexto));
+        String chave = tokenAtual.linha + "|" + esperado + "|" + tokenAtual.lexema + "|" + contexto;
+        if (!chave.equals(ultimoErro)) {
+            listaErros.add(new ErroSintatico(tokenAtual.linha, esperado, descrever(tokenAtual), contexto));
+            ultimoErro = chave;
+        }
     }
 
     private String descrever(Token token) {
@@ -143,16 +168,39 @@ public class AnalisadorSintatico {
     }
 
     private void sincronizarComando() {
-        sincronizar(new HashSet<String>(Arrays.asList(";", "}", "if", "while", "for", "return", "break", "continue", "{")));
+        sincronizar(SINCRONIZACAO_BLOCO);
         if (ehLexema(";")) {
             avancar();
         }
     }
 
+    private void sincronizarDeclaracao() {
+        sincronizar(SINCRONIZACAO_DECLARACAO);
+        if (ehLexema(";")) {
+            avancar();
+        }
+    }
+
+    private void sincronizarExpressao() {
+        sincronizar(SINCRONIZACAO_EXPRESSAO);
+    }
+
+    private void sincronizarEstrutura() {
+        sincronizar(SINCRONIZACAO_ESTRUTURA);
+    }
+
+    private void consumirFimDeclaracao(String contexto) {
+        if (verificarLexema(";")) {
+            return;
+        }
+        relatarErro("';'", contexto);
+        sincronizarDeclaracao();
+    }
+
     private void analisarDeclaracaoPacote() {
         consumirLexema("package", "declaracao de pacote");
         analisarNomeQualificado("declaracao de pacote");
-        consumirLexema(";", "declaracao de pacote");
+        consumirFimDeclaracao("declaracao de pacote");
     }
 
     private void analisarDeclaracaoImportacao() {
@@ -164,7 +212,7 @@ public class AnalisadorSintatico {
             }
             consumirIdentificador("declaracao de importacao");
         }
-        consumirLexema(";", "declaracao de importacao");
+        consumirFimDeclaracao("declaracao de importacao");
     }
 
     private String analisarNomeQualificado(String contexto) {
@@ -185,10 +233,7 @@ public class AnalisadorSintatico {
             return;
         }
         relatarErro("'class'", "declaracao de tipo");
-        sincronizar(new HashSet<String>(Arrays.asList("class", "}", ";")));
-        if (ehLexema(";")) {
-            avancar();
-        }
+        sincronizarDeclaracao();
     }
 
     private List<String> analisarModificadores() {
@@ -226,7 +271,7 @@ public class AnalisadorSintatico {
         List<String> modificadores = analisarModificadores();
         if (!ehInicioTipo(true)) {
             relatarErro("declaracao de atributo ou metodo", "membro da classe");
-            sincronizarComando();
+            sincronizarDeclaracao();
             return;
         }
 
@@ -284,7 +329,7 @@ public class AnalisadorSintatico {
             Token nome = consumirIdentificador("declaracao de atributo");
             declararVariavel(nome, tipo, modificadores, "variavel", "atributo");
         }
-        consumirLexema(";", "declaracao de atributo");
+        consumirFimDeclaracao("declaracao de atributo");
     }
 
     private void analisarCorpoMetodo() {
@@ -328,12 +373,12 @@ public class AnalisadorSintatico {
         }
         if (ehLexema("break")) {
             consumirLexema("break", "comando break");
-            consumirLexema(";", "comando break");
+            consumirFimDeclaracao("comando break");
             return;
         }
         if (ehLexema("continue")) {
             consumirLexema("continue", "comando continue");
-            consumirLexema(";", "comando continue");
+            consumirFimDeclaracao("comando continue");
             return;
         }
 
@@ -341,7 +386,10 @@ public class AnalisadorSintatico {
             analisarDeclaracaoVariavelLocal(true);
         } else {
             analisarExpressao();
-            consumirLexema(";", "comando de expressao");
+            if (!verificarLexema(";")) {
+                relatarErro("';'", "comando de expressao");
+                sincronizarComando();
+            }
         }
     }
 
@@ -349,7 +397,11 @@ public class AnalisadorSintatico {
         consumirLexema("if", "comando if");
         consumirLexema("(", "condicao if");
         analisarExpressao();
-        consumirLexema(")", "condicao if");
+        if (!verificarLexema(")")) {
+            relatarErro("')'", "condicao if");
+            sincronizarEstrutura();
+            verificarLexema(")");
+        }
         analisarComando();
         if (verificarLexema("else")) {
             analisarComando();
@@ -360,7 +412,11 @@ public class AnalisadorSintatico {
         consumirLexema("while", "comando while");
         consumirLexema("(", "condicao while");
         analisarExpressao();
-        consumirLexema(")", "condicao while");
+        if (!verificarLexema(")")) {
+            relatarErro("')'", "condicao while");
+            sincronizarEstrutura();
+            verificarLexema(")");
+        }
         analisarComando();
     }
 
@@ -394,7 +450,7 @@ public class AnalisadorSintatico {
         if (!ehLexema(";")) {
             analisarExpressao();
         }
-        consumirLexema(";", "comando return");
+        consumirFimDeclaracao("comando return");
     }
 
     private void analisarDeclaracaoVariavelLocal(boolean consumirPontoEVirgula) {
@@ -408,7 +464,7 @@ public class AnalisadorSintatico {
         }
 
         if (consumirPontoEVirgula) {
-            consumirLexema(";", "declaracao de variavel local");
+            consumirFimDeclaracao("declaracao de variavel local");
         }
     }
 
@@ -649,7 +705,11 @@ public class AnalisadorSintatico {
 
         if (verificarLexema("(")) {
             analisarExpressao();
-            consumirLexema(")", "expressao parentizada");
+            if (!verificarLexema(")")) {
+                relatarErro("')'", "expressao parentizada");
+                sincronizarExpressao();
+                verificarLexema(")");
+            }
             return;
         }
 
@@ -659,7 +719,8 @@ public class AnalisadorSintatico {
         }
 
         relatarErro("expressao", "expressao primaria");
-        if (!fim()) {
+        sincronizarExpressao();
+        if (!fim() && !SINCRONIZACAO_EXPRESSAO.contains(tokenAtual.lexema)) {
             avancar();
         }
     }
@@ -689,13 +750,21 @@ public class AnalisadorSintatico {
         }
 
         analisarExpressao();
-        consumirLexema("]", "criacao de array");
+        if (!verificarLexema("]")) {
+            relatarErro("']'", "criacao de array");
+            sincronizarExpressao();
+            verificarLexema("]");
+        }
 
         while (verificarLexema("[")) {
             if (!ehLexema("]")) {
                 analisarExpressao();
             }
-            consumirLexema("]", "criacao de array");
+            if (!verificarLexema("]")) {
+                relatarErro("']'", "criacao de array");
+                sincronizarExpressao();
+                verificarLexema("]");
+            }
         }
     }
 

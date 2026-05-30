@@ -1,565 +1,423 @@
-# Explicação Completa do Projeto Compilador (Fases 1 e 2)
-
-## 1. Objetivo do projeto
-Este projeto implementa um compilador acadêmico em Java dividido em duas fases principais:
-
-1. Fase léxica: transforma texto-fonte em tokens.
-2. Fase sintática: valida a estrutura gramatical, recupera erros e constrói/atualiza tabela de símbolos por escopo.
-
-O objetivo não é gerar código final nesta fase, mas sim validar corretamente programas no subconjunto de Java adotado e produzir diagnóstico de erros úteis.
-
-## 2. Estrutura de pastas e responsabilidade
-- `Compilador/src/Main/Main.java`: ponto de entrada e orquestração.
-- `Compilador/src/lexer`: analisador léxico e token.
-- `Compilador/src/parser`: analisador sintático LL(1)-like e metadados de tipo.
-- `Compilador/src/symbols`: tabela de símbolos com escopos aninhados.
-- `Compilador/src/errors`: modelagem de erro sintático.
-- `Compilador/src/ast`: nós-base para evolução de AST (fase futura).
-- `Compilador/testes`: ficheiros de entrada para validação do compilador.
-
-## 3. Fluxo global de execução
-Fluxo em alto nível:
-
-1. `Main.main(args)` resolve o caminho do ficheiro de entrada.
-2. `Main` instancia `AnalisadorLexico`.
-3. `Main` instancia `AnalisadorSintatico` com o léxico.
-4. Parser chama `analisarPrograma()`.
-5. Parser consome tokens via `lexer.analex()` (com lookahead de 1 token).
-6. Durante parsing, símbolos são declarados/resolvidos por escopo.
-7. Erros são acumulados em lista (não para no primeiro erro).
-8. No fim, `Main` imprime erros (se houver) e imprime tabela de símbolos.
-
-## 4. Fase de entrada e robustez de ficheiros (`Main.java`)
-Arquivo: `Compilador/src/Main/Main.java`
-
-### 4.1 Responsabilidades do `Main`
-- Definir ficheiro padrão (`ARQUIVO_PADRAO`).
-- Aceitar ficheiro por argumento (`args[0]`).
-- Resolver caminhos relativos em diferentes diretórios de execução.
-- Tratar falta de ficheiro com mensagem amigável.
-- Disparar análise léxica/sintática e impressão de resultados.
-
-### 4.2 Fluxo de `main(String[] args)`
-1. Escolhe entrada:
-- com argumento: usa argumento.
-- sem argumento: usa `ARQUIVO_PADRAO`.
-
-2. Resolve caminho com `resolverArquivoEntrada`.
-
-3. Se não encontrar ficheiro:
-- imprime mensagem amigável.
-- encerra sem stacktrace.
-
-4. Se encontrar:
-- cria `AnalisadorLexico`.
-- cria `AnalisadorSintatico`.
-- executa `analisarPrograma()`.
-
-5. Resultado:
-- se `temErros()`: imprime todos os erros.
-- senão: imprime sucesso.
-
-6. Imprime tabela de símbolos final.
-
-### 4.3 Fluxo de `resolverArquivoEntrada(String entrada)`
-Tenta, por ordem:
-1. caminho informado diretamente.
-2. `Compilador/<entrada>`.
-3. `../<entrada>`.
-
-Retorna `Path` normalizado quando encontra; `null` se nenhum existir.
-
-## 5. Fase léxica (`lexer`)
-
-## 5.1 Classe `Token`
-Arquivo: `Compilador/src/lexer/Token.java`
-
-Representa uma unidade léxica com:
-- `lexema`: texto reconhecido.
-- `codigo`: tipo/token id.
-- `linha`: linha no arquivo.
-
-`toString()` converte `codigo` para nome via `AnalisadorLexico.getNomeToken`.
-
-## 5.2 Classe `lexer.TabelaSimbolos`
-Arquivo: `Compilador/src/lexer/TabelaSimbolos.java`
-
-É uma tabela simples de tokens reconhecidos na análise léxica:
-- `adicionar(Token t)`: guarda token.
-- `mostrar()`: imprime tokens guardados.
-
-Observação: esta tabela é diferente da tabela semântica/sintática em `symbols.TabelaSimbolos`.
-
-## 5.3 Classe `AnalisadorLexico`
-Arquivo: `Compilador/src/lexer/AnalisadorLexico.java`
-
-### 5.3.1 Papel
-Implementa scanner por DFA (autômato finito determinístico) com estados explícitos, reconhecendo:
-- palavras reservadas
-- identificadores
-- números inteiros e reais
-- operadores aritméticos, relacionais, lógicos e bitwise
-- pontuação/símbolos
-- literais string e char
-- comentários de linha e bloco
-
-### 5.3.2 Estado interno relevante
-- `conteudo[]`: buffer do arquivo fonte.
-- `pos`: posição atual.
-- `linha`, `coluna`: controle de posição.
-- `lexema`: acumulador do token atual.
-
-### 5.3.3 Métodos principais
-1. `AnalisadorLexico(String caminho)`
-- carrega bytes do arquivo.
-- inicializa buffer e estrutura de apoio.
-
-2. `analex()`
-- método central: roda DFA até produzir 1 token.
-- ignora whitespaces.
-- retorna `TOKEN_FIM_ARQUIVO` ao final.
-- pula comentários no parser (não aqui).
-
-3. `iniciarAnalise()`
-- varre todos os tokens até EOF.
-- grava em tabela léxica e imprime.
-- é útil para debug/etapa léxica isolada.
-
-4. Auxiliares:
-- `lerCaractere()`: consome 1 char e atualiza linha/coluna.
-- `voltarCaractere()`: faz 1-char rollback.
-- `peek()`: lookahead de caractere sem consumir.
-- `ehLetraDigitoUnderscore(char c)`: valida charset de identificador.
-- `gravarTokenLexema(...)`: armazena token reconhecido.
-- `getLinhaAtual()`: usado pelo parser para marcar linha.
-- `getNomeToken(int codigo)`: mapeamento id -> nome textual.
-
-### 5.3.4 Lógica do DFA (resumo por grupos de estados)
-1. Estado `0` (inicial):
-- decide para qual família ir: identificador/reservada, número, operador, delimitador, string/char.
-
-2. Estados de identificador e reservadas:
-- `1`: identificador genérico.
-- `10-11`: `if`.
-- `20-24`: `while`.
-- `30-31`: `int`.
-- `40-44`: `float`.
-- `50-55`: `return`.
-- `60+`: `class`.
-- `70+`: `public`.
-- `80+`: `void`.
-
-3. Estados numéricos:
-- `90`: inteiro.
-- `91-92`: real após ponto decimal.
-
-4. Estados operadores/comentários:
-- `100`: `/`, `//`, `/*`.
-- `101`: `<` ou `<=`.
-- `102`: `>` ou `>=`.
-- `103`: `=` ou `==`.
-- `104`: `!` ou `!=`.
-- `105`: `&` ou `&&`.
-- `106`: `|` ou `||`.
-- `107`: comentário de linha.
-- `108-109`: comentário de bloco.
-
-5. Estados literais:
-- `110-111`: string e escape.
-- `114`: char (inclui escape).
-
-6. Incremento/decremento:
-- `112`: `+` ou `++`.
-- `113`: `-` ou `--`.
-
-## 6. Fase sintática e semântica básica (`parser`)
-
-## 6.1 Classe `InformacaoTipo`
-Arquivo: `Compilador/src/parser/InformacaoTipo.java`
-
-Encapsula tipo com:
-- `nome` (ex.: `int`, `Programa`, `String`).
-- `dimensoes` (quantidade de `[]`).
-
-`comoTexto()` devolve tipo final textual (ex.: `int[][]`).
-
-## 6.2 Classe `AnalisadorSintatico`
-Arquivo: `Compilador/src/parser/AnalisadorSintatico.java`
-
-### 6.2.1 Papel
-Parser descendente recursivo com:
-- lookahead de 1 token (`tokenAtual`, `tokenSeguinte`).
-- recuperação de erro por sincronização.
-- integração com tabela de símbolos e validação de identificador declarado.
-
-### 6.2.2 Estado interno
-- `lexer`: origem dos tokens.
-- `tabelaSimbolos`: escopos e declarações.
-- `listaErros`: erros acumulados.
-- `tokenAtual` e `tokenSeguinte`: janela de lookahead.
-- `contadorBlocos`: nomear escopos de bloco.
-- `PALAVRAS_RESERVADAS`: evita tratar reservada como identificador.
-
-### 6.2.3 Métodos de infraestrutura (núcleo do parser)
-1. `lerToken()`
-- chama `lexer.analex()`.
-- copia linha atual.
-- ignora tokens `COMENTARIO`.
-
-2. `avancar()`
-- desloca janela de lookahead.
-
-3. `fim()`
-- verifica EOF.
-
-4. Predicados:
-- `ehLexema`, `ehLexemaSeguinte`, `ehIdentificador`, `verificarLexema`.
-
-5. Consumidores com diagnóstico:
-- `consumirLexema(...)`
-- `consumirIdentificador(...)`
-
-6. Erros e recuperação:
-- `relatarErro(...)`
-- `descrever(...)`
-- `sincronizar(...)`
-- `sincronizarComando()`
-
-### 6.2.4 Entrada da gramática
-#### `analisarPrograma()`
-Fluxo:
-1. exige `package` no início.
-2. aceita zero ou mais `import`.
-3. aceita zero ou mais declarações de tipo até EOF.
-
-Retorna nó AST raiz (`NoAST("programa")`), ainda sem popular árvore detalhada.
-
-### 6.2.5 Declarações de topo
-1. `analisarDeclaracaoPacote()`
-- consome `package`, nome qualificado, `;`.
-
-2. `analisarDeclaracaoImportacao()`
-- consome `import`, nome qualificado com possível `.*`, `;`.
-
-3. `analisarNomeQualificado(...)`
-- lê identificadores separados por `.` e devolve string final.
-
-4. `analisarDeclaracaoTipo()`
-- lê modificadores.
-- exige `class`.
-- caso contrário, relata erro e sincroniza.
-
-### 6.2.6 Classe e membros
-1. `analisarModificadores()`
-- coleta `public/private/protected/static/final`.
-
-2. `analisarDeclaracaoClasse(modificadores)`
-- consome `class Nome`.
-- declara símbolo de classe.
-- opcional `extends`.
-- abre escopo da classe.
-- analisa membros até `}`.
-- fecha escopo.
-
-3. `analisarMembroClasse()`
-- decide entre método e atributo:
-  - lê tipo e nome.
-  - se próximo token é `(`: método.
-  - senão: campo.
-
-4. `analisarRestanteMetodo(...)`
-- cria símbolo `metodo`.
-- define retorno e metadados.
-- declara método.
-- entra escopo do método.
-- analisa parâmetros e corpo.
-- sai escopo do método.
-
-5. `analisarListaParametros(metodo)`
-- lê parâmetros separados por vírgula até `)`.
-
-6. `analisarParametro(metodo)`
-- lê tipo + identificador.
-- adiciona assinatura textual ao método.
-- declara parâmetro no escopo local do método.
-
-7. `analisarRestanteCampo(...)`
-- declara 1 ou mais atributos do mesmo tipo.
-- aceita inicialização e arrays no declarador.
-- exige `;`.
-
-### 6.2.7 Blocos e comandos
-1. `analisarCorpoMetodo()`
-- consome `{ ... }` com comandos.
-
-2. `analisarBloco()`
-- abre escopo `blocoN`, analisa comandos, fecha escopo.
-
-3. `analisarComando()`
-Despacho por primeiro token:
-- bloco `{...}`
-- `if`
-- `while`
-- `for`
-- `return`
-- `break;`
-- `continue;`
-- declaração local
-- expressão seguida de `;`
-
-4. `analisarComandoSe()`
-- `if (expr) comando [else comando]`
-
-5. `analisarComandoEnquanto()`
-- `while (expr) comando`
-
-6. `analisarComandoPara()`
-- `for (init; cond; update) comando`
-- `init` pode ser declaração local sem `;` interno extra.
-
-7. `analisarComandoRetorno()`
-- `return [expr];`
-
-### 6.2.8 Declarações locais e inicialização
-1. `analisarDeclaracaoVariavelLocal(consumirPontoEVirgula)`
-- tipo + uma ou mais variáveis separadas por vírgula.
-- decide se consome `;` conforme contexto (normal/for-init).
-
-2. `declararVariavel(...)`
-- trata sufixo `[]` no declarador.
-- monta `InformacaoTipo` final.
-- cria `Simbolo`, preenche metadados.
-- processa inicializador opcional.
-- registra na tabela.
-
-3. `analisarInicializador()`
-- suporta `{...}` para array initializer.
-- senão analisa expressão normal.
-
-4. `declarar(...)`
-- delega à `TabelaSimbolos`.
-- se duplicado no mesmo escopo, registra erro.
-
-### 6.2.9 Tipos
-1. `analisarTipoOuVazio()`
-- aceita `void` ou tipo normal.
-
-2. `analisarTipo()`
-- primitivo, `String`, ou nome qualificado.
-- consome dimensões de array no tipo.
-
-3. `analisarSufixoArrayTipo()`
-- conta `[]` no tipo base.
-
-4. `analisarSufixoArrayDeclarador()`
-- conta `[]` no nome declarador.
-
-5. `ehInicioTipo(...)`, `ehInicioDeclaracao()`
-- heurísticas de decisão sintática.
-
-### 6.2.10 Expressões (precedência)
-Cadeia de precedência implementada:
-
-1. `analisarExpressao()` -> atribuição.
-2. `analisarExpressaoAtribuicao()`
-3. `analisarExpressaoCondicional()` (`?:`)
-4. `analisarExpressaoOrLogico()` (`||`)
-5. `analisarExpressaoELogico()` (`&&`)
-6. `analisarExpressaoOrBit()` (`|`)
-7. `analisarExpressaoXorBit()` (`^`)
-8. `analisarExpressaoAndBit()` (`&`)
-9. `analisarExpressaoIgualdade()` (`==`, `!=`)
-10. `analisarExpressaoRelacional()` (`<`, `>`, `<=`, `>=`)
-11. `analisarExpressaoAditiva()` (`+`, `-`)
-12. `analisarExpressaoMultiplicativa()` (`*`, `/`, `%`)
-13. `analisarExpressaoUnaria()` (prefix `+ - ! ++ --`)
-14. `analisarExpressaoPosfixa()` (`[]`, chamada `()`, acesso `.`, `++ --`)
-15. `analisarExpressaoPrimaria()` (literal, id, `this`, `super`, parentizada, `new`)
-
-### 6.2.11 Criação (`new`)
-1. `analisarExpressaoCriacao()`
-- decide entre construção de objeto e array.
-
-2. `analisarNomeTipoCriacao()`
-- tipo primitivo/String ou nome qualificado.
-
-3. `analisarRestanteCriacaoArray()`
-- valida sintaxe de dimensões de array.
-
-### 6.2.12 Verificações semânticas básicas
-Em `analisarExpressaoPrimaria()`:
-- ao usar identificador, tenta resolver na tabela.
-- se não existe e não começa com maiúscula, registra erro de identificador não declarado.
-
-Isto evita confundir nomes de classes com variáveis comuns.
-
-### 6.2.13 Predicados utilitários
-- `ehLiteral()`
-- `ehTipoPrimitivo(...)`
-- `ehModificador(...)`
-- `ehOperadorAtribuicao(...)`
-- `ehPalavraReservada(...)`
-
-## 7. Tabela de símbolos semântica (`symbols`)
-
-## 7.1 Classe `Simbolo`
-Arquivo: `Compilador/src/symbols/Simbolo.java`
-
-Modela uma entrada de símbolo com metadados ricos:
-- identidade: token, lexema, linha, categoria.
-- tipagem: tipo de dado, tipo de variável, dimensões, tipo de retorno.
-- memória aproximada: endereço, tamanho.
-- estado: inicializado, valor textual.
-- assinatura: parâmetros.
-- modificadores: `public`, `static`, etc.
-
-## 7.2 Classe `Escopo`
-Arquivo: `Compilador/src/symbols/Escopo.java`
-
-Representa escopo com:
-- nome e categoria (`global`, `classe`, `metodo`, `bloco`).
-- ponteiro para escopo pai.
-- mapa ordenado de símbolos locais.
-
-Métodos:
-- `declarar`: insere símbolo se não existir localmente.
-- `resolver`: busca local, depois sobe para pai.
-
-## 7.3 Classe `TabelaSimbolos`
-Arquivo: `Compilador/src/symbols/TabelaSimbolos.java`
-
-### Fluxo principal
-1. construtor abre escopo `global`.
-2. `entrarEscopo(...)` cria escopo filho e torna atual.
-3. `sairEscopo()` volta para pai.
-4. `declarar(Simbolo)`:
-- define escopo, endereço e tamanho.
-- incrementa ponteiro de próximo endereço.
-- delega inserção para escopo atual.
-5. `resolver(...)`: lookup lexical em cadeia.
-6. `imprimir()`: mostra todos os escopos/símbolos.
-
-### Heurística de tamanho (`tamanhoSimbolo`)
-- `double/long`: 8
-- `boolean`: 1
-- `char`: 2
-- `float/int`: 4
-- default: 4
-
-## 8. Modelo de erros (`errors`)
-
-## 8.1 `ErroSintatico`
-Arquivo: `Compilador/src/errors/ErroSintatico.java`
-
-Carrega:
-- linha
-- esperado
-- recebido
-- contexto
-
-`toString()` formata mensagem amigável para output final.
-
-## 8.2 `ExcecaoSintatica`
-Arquivo: `Compilador/src/errors/ExcecaoSintatica.java`
-
-Exceção runtime disponível para cenários de erro sintático fatal.
-No fluxo atual, o parser prioriza acumular erros em lista ao invés de lançar exceção para cada falha.
-
-## 9. AST base (`ast`)
-
-## 9.1 `NoAST`
-Arquivo: `Compilador/src/ast/NoAST.java`
-
-Nó genérico com:
-- `nome`
-- lista de `filhos`
-- operações para adicionar e consultar filhos
-
-## 9.2 `NoComando` e `NoExpressao`
-Arquivos:
-- `Compilador/src/ast/NoComando.java`
-- `Compilador/src/ast/NoExpressao.java`
-
-Especializações simples de `NoAST` para evolução futura da árvore sintática.
-Na fase atual, parser ainda não monta AST detalhada por produção.
-
-## 10. Como os testes se conectam ao fluxo
-Pasta: `Compilador/testes`
-
-Arquivos principais:
-- `teste_parser_valido.java`: cenário sem erros.
-- `teste_parser_erros.java`: cenário com erros para testar recuperação.
-- `teste_parser_bitwise_ternario.java`: operadores bitwise e condicional.
-
-Execução típica:
-1. sem argumento: usa arquivo padrão configurado no `Main`.
-2. com argumento: usa caminho fornecido.
+# Explicacao completa do compilador
+
+## 1. Ideia geral
+
+Este compilador foi desenvolvido em Java para demonstrar as duas primeiras fases classicas de compilacao:
+
+1. **Analise lexica:** transforma caracteres em tokens.
+2. **Analise sintatica:** verifica se a sequencia de tokens respeita a gramatica da linguagem.
+
+A linguagem aceite e inspirada em Java. O projeto reconhece classes, metodos, atributos, variaveis locais, parametros, blocos, comandos e expressoes com varios operadores.
+
+O compilador tambem constroi uma tabela de simbolos para guardar informacoes importantes sobre os nomes declarados no programa.
+
+## 2. Fluxo completo
+
+O fluxo principal e:
+
+```text
+ficheiro fonte
+    |
+    v
+AnalisadorLexico
+    |
+    v
+tokens
+    |
+    v
+AnalisadorSintatico
+    |
+    +--> validacao sintatica
+    +--> recuperacao de erros
+    +--> tabela de simbolos
+    |
+    v
+relatorio final
+```
+
+O ponto de entrada esta em `Main.Main`. Ele resolve o ficheiro, cria o lexer, cria o parser e chama:
+
+```java
+analisadorSintatico.analisarPrograma();
+```
+
+No fim, imprime:
+
+- `COMPILACAO COM SUCESSO`, quando nao ha erros;
+- `COMPILACAO COM ERROS`, quando existem erros;
+- total de erros;
+- tabela de simbolos apenas se o utilizador usar `--debug` ou `--tabela`.
+
+## 3. Fase 1: analisador lexico
+
+O analisador lexico esta em `lexer.AnalisadorLexico`.
+
+Ele le o ficheiro fonte caractere por caractere e usa uma maquina de estados finitos. Cada estado reconhece uma parte de um token. Por exemplo:
+
+- estado inicial: decide se o proximo token comeca por letra, digito, operador ou delimitador;
+- estados de identificador: continuam enquanto houver letra, digito ou `_`;
+- estados de numero: distinguem inteiro e real;
+- estados de string: continuam ate fechar aspas ou encontrar erro;
+- estados de comentario: distinguem `//` e `/* ... */`;
+- estados de operadores: distinguem `=`, `==`, `<`, `<=`, `+`, `++`, etc.
+
+## 4. Tokens reconhecidos
+
+O lexer reconhece:
+
+- identificadores;
+- palavras reservadas principais;
+- numeros inteiros;
+- numeros reais;
+- strings;
+- chars;
+- operadores aritmeticos;
+- operadores relacionais;
+- operadores logicos;
+- operadores bitwise;
+- operador ternario `? :`;
+- parenteses;
+- chaves;
+- colchetes;
+- ponto e virgula;
+- virgula;
+- ponto;
+- comentarios;
+- fim de ficheiro;
+- token de erro.
+
+Exemplos:
+
+```text
+int       -> INT
+contador  -> IDENTIFICADOR
+10        -> NUMERO_INTEIRO
+3.5       -> NUMERO_REAL
+<=        -> OP_MENOR_IGUAL
+```
+
+## 5. Lexemas
+
+Lexema e o texto concreto encontrado no ficheiro fonte.
+
+No codigo:
+
+```java
+int contador = 0;
+```
+
+Temos os lexemas:
+
+```text
+int
+contador
+=
+0
+;
+```
+
+Cada lexema recebe uma classificacao, que e o token.
+
+## 6. Erros lexicos
+
+Quando o lexer nao consegue reconhecer corretamente um token, devolve `TOKEN_ERRO`.
+
+Exemplos:
+
+- string sem aspas finais;
+- comentario de bloco sem `*/`;
+- char mal formado;
+- numero com formato invalido;
+- simbolo desconhecido.
+
+O parser regista estes erros para que tambem contem no total final.
+
+## 7. Fase 2: analisador sintatico
+
+O analisador sintatico esta em `parser.AnalisadorSintatico`.
+
+Ele e um parser LL(1) implementado por descida recursiva. Isto significa que:
+
+- a analise e feita da esquerda para a direita;
+- a derivacao e mais a esquerda;
+- cada metodo do parser representa uma regra da gramatica;
+- o parser olha principalmente para o token atual para decidir que regra aplicar.
+
+O parser tambem mantem `tokenSeguinte`, usado em casos simples de decisao, como diferenciar declaracao local de expressao.
+
+## 8. Gramatica principal
+
+A gramatica implementada pode ser resumida assim:
+
+```text
+programa          -> package nome ; importacao* declaracaoTipo*
+importacao        -> import nome (. nome | . *)* ;
+declaracaoTipo    -> modificadores class identificador extends? { membro* }
+membro            -> modificadores tipo identificador restanteMembro
+restanteMembro    -> metodo | atributo
+metodo            -> ( parametros? ) { comando* }
+atributo          -> declarador (, declarador)* ;
+parametro         -> tipo identificador
+comando           -> bloco | if | while | for | return | break | continue | declaracao | expressao
+bloco             -> { comando* }
+```
+
+As expressoes seguem precedencia, do menor para o maior nivel:
+
+```text
+atribuicao
+condicional ternaria
+OR logico
+AND logico
+OR bitwise
+XOR bitwise
+AND bitwise
+igualdade
+relacional
+aditiva
+multiplicativa
+unaria
+posfixa
+primaria
+```
+
+## 9. Eliminacao de recursao a esquerda
+
+Uma gramatica LL(1) nao deve ter regras como:
+
+```text
+E -> E + T | T
+```
+
+Por isso, o parser usa repeticoes:
+
+```text
+E -> T (+ T)*
+```
+
+No codigo, isto aparece em metodos como:
+
+- `analisarExpressaoAditiva`;
+- `analisarExpressaoMultiplicativa`;
+- `analisarExpressaoRelacional`;
+- `analisarExpressaoIgualdade`;
+- `analisarExpressaoOrLogico`;
+- `analisarExpressaoELogico`.
+
+## 10. Fatoracao
+
+A fatoracao evita duas regras com o mesmo inicio.
 
 Exemplo:
-`java -cp Compilador/build/classes Main.Main testes/teste_parser_valido.java`
 
-## 11. Estratégia de recuperação de erros
-O parser segue princípio de continuidade:
+```text
+tipo identificador ...
+```
 
-1. registra erro com contexto.
-2. não aborta imediatamente.
-3. sincroniza em tokens seguros (`;`, `}`, inícios de comando).
-4. retoma parsing para reportar múltiplos erros numa execução.
+Pode ser atributo ou metodo. O parser primeiro le `tipo identificador` e depois decide:
 
-Benefício: ótimo para uso didático, pois mostra conjunto de falhas de uma vez.
+- se vier `(`, e metodo;
+- caso contrario, e atributo.
 
-## 12. Limites atuais e pontos de evolução
-Estado atual é forte para Fase 2, porém ainda há espaço:
+Isto esta implementado em `analisarMembroClasse()`.
 
-1. AST completa por produção ainda não está sendo construída.
-2. Verificações semânticas são básicas (escopo/declaração), sem sistema de tipos completo.
-3. Léxico usa constantes numéricas de token; poderia migrar para enum central.
-4. `AnalisadorLexico` imprime stacktrace ao falhar leitura de arquivo; pode ser refinado para erro amigável consistente com `Main`.
+## 11. Comandos reconhecidos
 
-## 13. Como explicar o projeto numa apresentação
-Roteiro curto que funciona bem:
+O parser reconhece:
 
-1. Problema: validar um subconjunto de Java em duas fases.
-2. Arquitetura: `Main` -> `Lexer` -> `Parser` -> `Tabela de Símbolos`.
-3. Léxico: DFA por estados para tokenização robusta.
-4. Sintático: recursivo com precedência de expressões e recuperação de erro.
-5. Símbolos: escopos aninhados com declaração/resolução.
-6. Resultado: erros legíveis + tabela final de símbolos.
-7. Demonstração: rodar arquivo válido e depois arquivo com erros.
+- blocos `{ ... }`;
+- `if` e `else`;
+- `while`;
+- `for`;
+- `return`;
+- `break`;
+- `continue`;
+- declaracoes de variaveis locais;
+- comandos de expressao.
 
-## 14. Mapa rápido de funções por fase
+## 12. Expressoes reconhecidas
 
-### Entrada/execução
-- `Main.main`
-- `Main.resolverArquivoEntrada`
+As expressoes suportam:
 
-### Léxico
-- `AnalisadorLexico.analex`
-- `AnalisadorLexico.lerCaractere`
-- `AnalisadorLexico.voltarCaractere`
-- `AnalisadorLexico.peek`
-- `AnalisadorLexico.getNomeToken`
+- literais;
+- identificadores;
+- `this`;
+- `super`;
+- expressoes entre parenteses;
+- criacao com `new`;
+- acesso a arrays;
+- chamada de metodos;
+- acesso por ponto;
+- incremento e decremento;
+- operadores unarios;
+- operadores aritmeticos;
+- operadores relacionais;
+- operadores logicos;
+- operadores bitwise;
+- operador ternario;
+- operadores de atribuicao.
 
-### Sintático
-- `AnalisadorSintatico.analisarPrograma`
-- família de `analisarDeclaracao...`
-- família de `analisarComando...`
-- família de `analisarExpressao...`
-- `AnalisadorSintatico.declarar`
-- `AnalisadorSintatico.sincronizar`
+## 13. Tabela de simbolos
 
-### Símbolos
-- `TabelaSimbolos.entrarEscopo`
-- `TabelaSimbolos.sairEscopo`
-- `TabelaSimbolos.declarar`
-- `TabelaSimbolos.resolver`
+A tabela de simbolos da Fase 2 fica no pacote `symbols`.
 
-## 15. Resumo final
-Este projeto está bem estruturado para ensino de compiladores:
+As classes principais sao:
 
-1. separa claramente fases léxica, sintática e gestão de símbolos;
-2. implementa parsing por precedência de forma legível;
-3. mantém robustez via recuperação de erros;
-4. permite demonstrar tanto sucesso quanto falhas com casos de teste.
+- `TabelaSimbolos`: controla escopos e declaracoes;
+- `Escopo`: guarda simbolos de um escopo especifico;
+- `Simbolo`: representa uma classe, metodo, variavel ou parametro.
 
-Com este entendimento, você consegue explicar arquitetura, decisões de implementação e fluxo de execução como alguém que escreveu o sistema de ponta a ponta.
+Cada simbolo guarda:
+
+- token;
+- lexema;
+- linha;
+- categoria;
+- tipo de dado;
+- tipo de variavel;
+- escopo;
+- valor;
+- endereco;
+- tamanho;
+- inicializado;
+- dimensoes;
+- parametros;
+- modificadores;
+- tipo de retorno.
+
+## 14. Escopos
+
+O compilador cria escopos hierarquicos:
+
+```text
+global
+  classe
+    metodo
+      bloco
+```
+
+A procura de nomes comeca no escopo atual e sobe para os escopos superiores. Isto permite encontrar parametros dentro de metodos e atributos dentro da classe.
+
+Declaracoes duplicadas sao rejeitadas apenas no mesmo escopo. O mesmo nome pode aparecer em escopos diferentes.
+
+## 15. Enderecos de memoria simulada
+
+O campo `endereco` foi organizado para evitar colisao e repeticao indevida:
+
+- apenas variaveis e parametros ocupam memoria simulada;
+- classes e metodos usam `endereco = -1`, pois nao representam armazenamento de valor;
+- o contador de memoria avanca apenas quando a declaracao e aceite;
+- se houver declaracao duplicada, nao e consumido novo endereco;
+- os enderecos sao sequenciais e globais.
+
+Tamanhos:
+
+```text
+boolean -> 1 byte
+char    -> 2 bytes
+int     -> 4 bytes
+float   -> 4 bytes
+long    -> 8 bytes
+double  -> 8 bytes
+outros  -> 4 bytes
+```
+
+Arrays usam o tamanho do tipo base nesta fase. A quantidade real de elementos seria responsabilidade de uma fase posterior.
+
+## 16. Tratamento de erros
+
+O erro sintatico e representado por `errors.ErroSintatico`.
+
+Cada mensagem informa:
+
+- linha;
+- contexto;
+- token esperado;
+- token encontrado.
+
+Exemplo:
+
+```text
+Erro Sintatico na linha 6 [condicao if]: esperado ')', mas encontrado '{' (ABRE_CHAVE)
+```
+
+Tambem existem erros semanticos simples:
+
+- declaracao duplicada;
+- uso de identificador nao declarado.
+
+## 17. Modo panico
+
+O modo panico permite continuar a analise depois de um erro. Em vez de terminar no primeiro problema, o parser avanca ate encontrar um token seguro.
+
+A sincronizacao foi separada por contexto:
+
+```text
+declaracoes -> ;, }, inicio de declaracao
+blocos      -> }, {, inicio de comando
+expressoes  -> ;, ), ], ,, }, :, {
+estruturas  -> ), {, }, ;, else
+```
+
+Exemplo: se faltar `;` numa declaracao, o parser procura o fim da declaracao ou o inicio da proxima. Se faltar `)` numa condicao, procura delimitadores proprios de estruturas.
+
+Isto reduz erros em cascata e evita loops infinitos.
+
+## 18. Saida final
+
+A execucao normal nao mostra a tabela de simbolos automaticamente. Isto deixa a saida mais limpa para o utilizador.
+
+Resumo possivel sem erros:
+
+```text
+COMPILACAO COM SUCESSO
+Analise lexica e sintatica concluidas sem erros.
+Total de erros: 0
+```
+
+Resumo possivel com erros:
+
+```text
+COMPILACAO COM ERROS
+Foram encontrados erros sintaticos/semanticos:
+...
+Total de erros: N
+```
+
+Para mostrar a tabela:
+
+```text
+--tabela
+```
+
+ou:
+
+```text
+--debug
+```
+
+## 19. Porque nao usar cores por defeito
+
+Alguns consoles do NetBeans nao interpretam sequencias ANSI de cor de forma igual. Por isso, a apresentacao principal usa texto claro e portavel:
+
+- `COMPILACAO COM SUCESSO`;
+- `COMPILACAO COM ERROS`;
+- `Total de erros`.
+
+Se o ambiente suportar ANSI, cores podem ser adicionadas depois sem alterar a logica do compilador.
+
+## 20. Estado final da Fase 1 e Fase 2
+
+Com estas fases, o projeto consegue:
+
+- ler um ficheiro fonte;
+- reconhecer tokens;
+- ignorar comentarios;
+- reportar erros lexicos;
+- validar a estrutura sintatica;
+- reconhecer classes, metodos, variaveis, comandos e expressoes;
+- criar escopos;
+- preencher tabela de simbolos;
+- atribuir enderecos simulados;
+- recuperar de erros por modo panico;
+- apresentar um resumo final adequado para defesa.

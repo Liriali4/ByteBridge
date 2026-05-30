@@ -44,6 +44,10 @@ public class Simbolo {
         return categoria;
     }
 
+    public int obterTamanho() {
+        return tamanho;
+    }
+
     public String obterTipoDado() {
         return tipoDado;
     }

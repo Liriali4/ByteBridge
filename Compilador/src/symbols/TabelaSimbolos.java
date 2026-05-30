@@ -27,10 +27,19 @@ public class TabelaSimbolos {
         if (escopoAtual == null) {
             return false;
         }
-        int tamanho = simbolo.obterTipoDado() == null ? 4 : tamanhoSimbolo(simbolo.obterTipoDado());
+        if (escopoAtual.contemNoEscopoAtual(simbolo.obterLexema())) {
+            return false;
+        }
+
+        int tamanho = tamanhoParaDeclaracao(simbolo);
         simbolo.definirEscopo(escopoAtual.obterNome());
-        simbolo.definirEndereco(proximoEndereco);
-        proximoEndereco += tamanho;
+        simbolo.definirTamanho(tamanho);
+        if (tamanho > 0) {
+            simbolo.definirEndereco(proximoEndereco);
+            proximoEndereco += tamanho;
+        } else {
+            simbolo.definirEndereco(-1);
+        }
         return escopoAtual.declarar(simbolo);
     }
 
@@ -64,6 +73,16 @@ public class TabelaSimbolos {
             return 4;
         }
         return 4;
+    }
+
+    private int tamanhoParaDeclaracao(Simbolo simbolo) {
+        if ("metodo".equals(simbolo.obterCategoria()) || "classe".equals(simbolo.obterCategoria())) {
+            return 0;
+        }
+        if (simbolo.obterTamanho() > 0) {
+            return simbolo.obterTamanho();
+        }
+        return tamanhoSimbolo(simbolo.obterTipoDado());
     }
 
     public void imprimir() {

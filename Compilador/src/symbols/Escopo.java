@@ -23,6 +23,10 @@ public class Escopo {
         return true;
     }
 
+    public boolean contemNoEscopoAtual(String lexema) {
+        return simbolos.containsKey(lexema);
+    }
+
     public Simbolo resolver(String lexema) {
         Simbolo local = simbolos.get(lexema);
         if (local != null) {
