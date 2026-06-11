@@ -165,7 +165,7 @@ public class AnalisadorSintatico {
         while (!fim() && !sincronizacao.contains(tokenAtual.lexema)) {
             avancar();
         }
-    }
+    } 
 
     private void sincronizarComando() {
         sincronizar(SINCRONIZACAO_BLOCO);

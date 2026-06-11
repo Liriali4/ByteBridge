@@ -19,7 +19,7 @@ public class ErroSintatico {
 
     @Override
     public String toString() {
-        return "Erro Sintatico na linha " + linha + " [" + contexto + "]: esperado "
+        return "Erro na linha " + linha + " [" + contexto + "]: esperado "
                 + esperado + ", mas encontrado " + recebido;
     }
 }
