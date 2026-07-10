@@ -2,7 +2,8 @@
 
 ## Visão Geral
 
-O compilador está organizado em duas fases implementadas e uma terceira preparada mas não implementada.
+O compilador está organizado em **três fases implementadas**, cada uma com
+responsabilidades bem definidas e sem sobreposição de lógica.
 
 ```
 Ficheiro .java
@@ -10,23 +11,37 @@ Ficheiro .java
       ▼
 ┌─────────────────────┐
 │  AnalisadorLexico   │  Fase 1 — Léxica
-│  (lexer.java)       │
+│  (lexer)            │
 └─────────────────────┘
       │  Token por token (sob pedido)
       ▼
 ┌─────────────────────┐
 │ AnalisadorSintatico │  Fase 2 — Sintática
-│ (parser.java)       │
+│ (parser)            │
 └─────────────────────┘
       │
       ├─ Lista de ErroSintatico
-      └─ TabelaSimbolos (symbols)
+      ├─ TabelaSimbolos (symbols)
+      └─ AST (ast)
+            │
+            ▼
+┌─────────────────────┐
+│ AnalisadorSemantico │  Fase 3 — Semântica
+│ (semantic)          │
+└─────────────────────┘
+      │
+      └─ Lista de ErroSemantico
             │
             ▼
       ┌──────────────┐
       │    Main      │  Apresentação de resultados
       └──────────────┘
 ```
+
+> A Fase 2 deixou de devolver uma AST vazia: agora constrói uma árvore real
+> (`ast.NoAST`) enquanto reconhece o programa. É essa árvore, em conjunto com a
+> `TabelaSimbolos`, que a Fase 3 percorre — sem reprocessar tokens nem duplicar
+> informação. Ver `explicando_fase03_semantico.md`.
 
 ---
 
@@ -337,43 +352,46 @@ Estas classes estão preparadas para a Fase 3 (análise semântica e geração d
 
 ---
 
-## Preparação para a Fase 3
+## Fase 3 — Integração (implementada)
 
-### O que já está implementado e pronto para usar
+### O que a Fase 2 fornece à Fase 3
 
 1. **Tabela de Símbolos completa** com escopos, tipos, endereços e modificadores
-2. **Resolução de nomes** (`tabelaSimbolos.resolver()`) com cadeia de escopos
-3. **Verificação básica de uso** de identificadores não declarados (em `analisarExpressaoPrimaria`)
-4. **Estrutura AST** (`NoAST`, `NoComando`, `NoExpressao`) pronta para ser populada
-5. **Informação de tipos** (`InformacaoTipo`) com suporte a arrays multidimensionais
-6. **Endereços de memória** já calculados para variáveis
+2. **AST real** (`NoAST`/`NoComando`/`NoExpressao`) populada durante o parsing
+3. **Assinaturas de métodos** (`Simbolo.obterParametros()`, `obterTipoRetorno()`,
+   `obterAssinatura()`)
+4. **Consultas de apoio** na tabela: `existe`, `declaradoNoEscopoAtual`,
+   `declaradoEmEscopoSuperior`, `tipoDe`, `estaInicializada`, `procurarMetodo`,
+   `metodoExiste`, `obterEscopos`
 
-### O que falta implementar na Fase 3
+### O que a Fase 3 verifica
 
-1. **Verificação de tipos** — garantir que operações são feitas entre tipos compatíveis
-2. **Verificação de retorno** — garantir que métodos não-void retornam valor
-3. **Verificação de inicialização** — variáveis usadas antes de serem inicializadas
-4. **Construção completa da AST** — popular a árvore durante a análise sintática
-5. **Geração de código** — usar a AST e a tabela de símbolos para gerar código alvo
+1. Uso de **variáveis não declaradas**
+2. Variáveis **declaradas duas vezes** no mesmo escopo
+3. **Incompatibilidade de tipos** e **atribuições incompatíveis**
+4. **Argumentos de métodos** (quantidade, tipo e ordem)
+5. Condições de `if`/`while`/`for` que **têm de ser boolean**
+6. Compatibilidade do valor de `return` com o tipo de retorno do método
 
-### Como a Fase 3 se integraria
+### Fluxo real
 
 ```
-AnalisadorSintatico (já existente)
-    └─ produz TabelaSimbolos + AST (a completar)
+AnalisadorSintatico
+    └─ produz TabelaSimbolos + AST
         │
         ▼
-AnalisadorSemantico (a criar)
+AnalisadorSemantico  (semantic.AnalisadorSemantico)
     └─ recebe TabelaSimbolos e AST
-    └─ verifica tipos, retornos, inicializações
-    └─ anota a AST com informação de tipos
+    └─ mantém a sua própria pilha de escopos (nome -> tipo)
+    └─ infere tipos e anota-os nos nós da AST
+    └─ acumula ErroSemantico (não pára no primeiro erro)
         │
         ▼
-GeradorCodigo (a criar)
-    └─ percorre a AST anotada
-    └─ usa endereços da TabelaSimbolos
-    └─ produz código alvo (bytecode, assembly, etc.)
+GeradorCodigo (evolução futura)
+    └─ percorreria a AST anotada usando os endereços da TabelaSimbolos
 ```
+
+Detalhes completos em `explicando_fase03_semantico.md`.
 
 ---
 
@@ -383,12 +401,20 @@ GeradorCodigo (a criar)
 
 ```
 ==================================================
-COMPILADOR - FASE 2: ANALISADOR SINTATICO
+COMPILADOR - FASES 1 A 3
 ==================================================
 
 Arquivo: testes/teste_parser_valido.java
 
 --------------------------------------------------
+
+ERROS SINTATICOS (0)
+-----------------
+Nenhum erro sintatico encontrado.
+
+ERROS SEMANTICOS (0)
+-----------------
+Nenhum erro semantico encontrado.
 
 ==================================================
 COMPILACAO CONCLUIDA COM SUCESSO
@@ -396,28 +422,30 @@ COMPILACAO CONCLUIDA COM SUCESSO
 
 Analise lexica concluida.
 Analise sintatica concluida.
+Analise semantica concluida.
 Nenhum erro encontrado.
 
-Total de erros: 0
+Total de erros: 0 (sintaticos: 0, semanticos: 0)
 ```
 
 ### Compilação com erros
 
+Os erros aparecem separados por fase. Repare que o `;` em falta é reportado na
+**linha da declaração** (fim da construção) e não na linha onde a análise parou,
+e que o identificador não declarado passou a ser um **erro semântico**:
+
 ```
-==================================================
-COMPILACAO CONCLUIDA COM ERROS
-==================================================
-
-Foram encontrados 3 erros.
-
-ERROS ENCONTRADOS
+ERROS SINTATICOS (3)
 -----------------
+[1] Erro na linha 1 [inicio do programa]: esperado 'package', mas encontrado 'public' (PUBLIC)
+[2] Erro na linha 2 [declaracao de atributo]: esperado ';' apos 'x', mas encontrado 'public' (PUBLIC)
+[3] Erro na linha 6 [condicao if]: esperado ')' apos '0', mas encontrado '{' (ABRE_CHAVE)
 
-[1] Erro Sintatico na linha 5 [declaracao de variavel local]: esperado ';', mas encontrado 'x' (IDENTIFICADOR)
-[2] Erro Sintatico na linha 8 [condicao if]: esperado ')', mas encontrado '{' (ABRE_CHAVE)
-[3] Erro Sintatico na linha 12 [uso de identificador]: esperado identificador declarado, mas encontrado 'y'
+ERROS SEMANTICOS (1)
+-----------------
+[1] Erro na linha 5 [variavel nao declarada] em 'y': o identificador 'y' nao foi declarado (contexto: uso de identificador)
 
-Total de erros: 3
+Total de erros: 4 (sintaticos: 3, semanticos: 1)
 ```
 
 ### Tabela de Símbolos (com --debug)

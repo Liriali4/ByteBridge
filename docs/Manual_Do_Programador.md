@@ -9,8 +9,9 @@ Main/           ← orquestração e ponto de entrada
 lexer/          ← análise léxica (Fase 1)
 parser/         ← análise sintática (Fase 2)
 symbols/        ← tabela de símbolos e escopos
-ast/            ← árvore sintática abstrata (preparada para Fase 3)
-errors/         ← representação de erros
+ast/            ← árvore sintática abstrata (construída na Fase 2)
+semantic/       ← análise semântica (Fase 3)
+errors/         ← representação de erros (léxico/sintático/semântico)
 utils/          ← utilitários partilhados
 ```
 
@@ -20,26 +21,28 @@ utils/          ← utilitários partilhados
 
 ### Main.java
 
-Ponto de entrada do compilador.
+Ponto de entrada do compilador. Orquestra as **três fases**.
 
 | Método | Visibilidade | Responsabilidade |
 |---|---|---|
-| `main(String[])` | public static | Orquestra toda a compilação |
+| `main(String[])` | public static | Orquestra toda a compilação (3 fases) |
 | `imprimirSucesso()` | private static | Imprime mensagem de sucesso |
-| `imprimirFalha(AnalisadorSintatico)` | private static | Imprime lista de erros |
+| `imprimirRelatorioErros(...)` | private static | Imprime uma lista única de erros ordenada por linha |
+| `combinarErros(...)` | private static | Junta `ErroSintatico` e `ErroSemantico` apenas para apresentação |
+| `limparMensagem(...)` | private static | Remove o prefixo repetido da linha antes de imprimir |
 | `imprimirTitulo(String)` | private static | Imprime separador com título |
-| `imprimirAviso(String)` | private static | Imprime aviso simples |
+| `normalizarEntrada(Path)` | private static | Garante `\n` final (evita bloqueio do lexer) |
 | `contemOpcao(String[], String)` | private static | Verifica se opção está nos args |
 | `obterEntrada(String[])` | private static | Extrai ficheiro de entrada dos args |
 | `resolverArquivoEntrada(String)` | private static | Resolve caminho do ficheiro |
 
 Fluxo de `main()`:
-1. Processar argumentos
-2. Resolver caminho do ficheiro
-3. Criar `AnalisadorLexico`
-4. Criar `AnalisadorSintatico`
-5. Chamar `analisarPrograma()`
-6. Apresentar resultado
+1. Processar argumentos e resolver o caminho do ficheiro
+2. Normalizar a entrada (`normalizarEntrada`) e criar `AnalisadorLexico`
+3. Criar `AnalisadorSintatico` e chamar `analisarPrograma()` → obtém AST + tabela
+4. Criar `AnalisadorSemantico(arvore, tabela)` e chamar `analisar()`
+5. Combinar erros sintáticos e semânticos numa lista única ordenada por linha
+6. Apresentar o relatório final sem separar as categorias internas
 
 ---
 
@@ -357,28 +360,38 @@ private final Map<String, Simbolo> simbolos  // LinkedHashMap
 
 ### NoAST.java
 
-Nó base da árvore sintática abstrata.
+Nó base da árvore sintática abstrata, **populada pelo parser** e percorrida pela
+Fase 3.
 
 ```java
-private final String nome
+private final String nome    // categoria do nó ("classe", "binario", ...)
+private String lexema        // texto relevante (nome/operador/valor)
+private int linha            // linha de origem no código
+private String tipo          // tipo inferido (preenchido na Fase 3)
 private final List<NoAST> filhos
 ```
 
 | Método | Responsabilidade |
 |---|---|
 | `adicionarFilho(NoAST)` | Adiciona filho (ignora null) |
-| `obterNome()` | Retorna nome do nó |
-| `obterFilhos()` | Retorna lista imutável de filhos |
+| `obterNome()` / `obterLexema()` / `obterLinha()` | Acessores do nó |
+| `obterTipo()` / `definirTipo(String)` | Tipo inferido pela análise semântica |
+| `obterFilho(int)` / `quantidadeFilhos()` | Acesso posicional aos filhos |
+| `obterFilhos()` | Lista imutável de filhos |
 
 ### NoComando.java e NoExpressao.java
 
-Subclasses de `NoAST` sem lógica adicional. Existem para distinguir tipos de nós na árvore.
-
-Nota: a AST está preparada mas não é populada pelo parser atual. O parser cria apenas o nó raiz `"programa"`.
+Subclasses de `NoAST` que distinguem comandos de expressões na árvore. São usadas
+pelo parser ao construir a AST e pelo `AnalisadorSemantico` ao percorrê-la.
 
 ---
 
 ## Pacote errors
+
+Cada fase mantém o seu **próprio tipo de erro** internamente. A apresentação ao
+utilizador, porém, é unificada em `Main`: `ErroSintatico` e `ErroSemantico` são
+convertidos para entradas de relatório, ordenados por linha e impressos numa só
+lista.
 
 ### ErroSintatico.java
 
@@ -387,16 +400,67 @@ private final int linha
 private final String esperado
 private final String recebido
 private final String contexto
+private final String apos     // (opcional) lexema após o qual faltou o símbolo
 ```
 
 | Método | Responsabilidade |
 |---|---|
 | `obterLinha()` | Retorna número da linha |
-| `toString()` | Formata mensagem de erro completa |
+| `toString()` | Formata a mensagem (inclui "apos 'x'" quando aplicável) |
+
+### ErroSemantico.java
+
+Erro produzido pela Fase 3. Totalmente separado de `ErroSintatico`.
+
+```java
+private final int linha
+private final String lexema
+private final String tipoErro     // ex.: "variavel nao declarada"
+private final String descricao
+private final String contexto
+```
+
+| Método | Responsabilidade |
+|---|---|
+| `obterLinha()` / `obterTipoErro()` | Acessores |
+| `toString()` | Formata: `Erro na linha L [tipo] em 'lexema': descricao (contexto: ...)` |
 
 ### ExcecaoSintatica.java
 
 Subclasse de `RuntimeException`. Não é usada no fluxo principal atual.
+
+---
+
+## Pacote semantic
+
+### AnalisadorSemantico.java
+
+Implementa a **Fase 3**. Recebe a AST e a `TabelaSimbolos` da Fase 2 e devolve uma
+lista de `ErroSemantico`.
+
+```java
+public AnalisadorSemantico(NoAST raiz, TabelaSimbolos tabela)
+public List<ErroSemantico> analisar()
+```
+
+| Método | Responsabilidade |
+|---|---|
+| `analisar()` | Percorre a AST e devolve o relatório de erros |
+| `analisarClasse/Metodo/Comando(...)` | Travessia por escopos |
+| `tipoDe(NoAST)` | Inferência de tipos (anota o nó e devolve o tipo) |
+| `compativelAtribuicao(destino, origem)` | Regras de compatibilidade de tipos |
+| `validarArgumentos(...)` | Verifica número, tipo e ordem dos argumentos |
+| `verificarCondicao(...)` | Garante condições `boolean` em if/while/for |
+| `subarvoreInvalida(...)` | Deteta nós `"erro"` criados pelo parser e evita cascata semântica |
+
+Mantém uma **pilha de escopos própria** (`nome → tipo`) alimentada pela AST, e usa
+a tabela apenas para assinaturas de métodos e nomes de classes. Detalhes em
+`explicando_fase03_semantico.md`.
+
+Quando o parser cria um nó `"erro"` durante a recuperação em modo pânico, a Fase 3
+trata essa subárvore como tipo `desconhecido`. Assim, a análise semântica continua
+nas partes válidas do programa, mas não produz erros sobre expressões ou
+inicializações que já ficaram inválidas por erro sintático grave.
 
 ---
 
@@ -472,25 +536,74 @@ Para adicionar um novo comando (ex: `switch`):
 
 ---
 
-## Adicionando a Fase 3 — Análise Semântica
+## Fase 3 — Análise Semântica (implementada)
 
-A estrutura atual já suporta a integração da Fase 3. Os passos seriam:
+A Fase 3 está integrada no fluxo completo:
 
-1. Criar pacote `semantic/`
-2. Criar `AnalisadorSemantico` que recebe `TabelaSimbolos` e `NoAST`
-3. Completar a construção da AST no parser (os métodos de análise devem retornar `NoAST`)
-4. Implementar verificações:
-   - Compatibilidade de tipos em atribuições e operações
-   - Tipo de retorno de métodos
-   - Variáveis usadas antes de inicialização
-5. Em `Main.main()`, adicionar:
-   ```java
-   AnalisadorSemantico semantico = new AnalisadorSemantico(
-       analisadorSintatico.obterTabelaSimbolos(),
-       ast
-   );
-   semantico.analisar();
-   ```
+```
+AnalisadorLexico -> AnalisadorSintatico -> AnalisadorSemantico
+      tokens          AST + tabela           ErroSemantico
+```
+
+Em `Main.main()`:
+
+```java
+NoAST arvore = analisadorSintatico.analisarPrograma();
+AnalisadorSemantico analisadorSemantico =
+        new AnalisadorSemantico(arvore, analisadorSintatico.obterTabelaSimbolos());
+List<ErroSemantico> errosSemanticos = analisadorSemantico.analisar();
+```
+
+O `AnalisadorSemantico` não lê tokens. Ele percorre a AST criada pelo parser e
+usa a tabela de símbolos criada na Fase 2 para consultar nomes de classes e
+assinaturas de métodos. A sua própria pilha de escopos (`Deque<Map<String,String>>`)
+é alimentada durante a travessia da AST para verificar declarações locais,
+parâmetros e atributos.
+
+Verificações atualmente implementadas:
+
+- uso de variáveis não declaradas;
+- variáveis declaradas duas vezes no mesmo escopo;
+- incompatibilidade de tipos em inicializações, atribuições e `return`;
+- compatibilidade de número, tipo e ordem dos argumentos em chamadas de métodos;
+- condições de `if`, `while`, `for` e operador ternário com tipo `boolean`;
+- operações inválidas em operadores aritméticos, relacionais, lógicos e unários;
+- índice de array com tipo não numérico.
+
+Exemplos de mensagens semânticas produzidas:
+
+```
+Linha 8: [variavel nao declarada] em 'x': o identificador 'x' nao foi declarado (contexto: uso de identificador)
+Linha 12: [atribuicao incompativel] em 'nome': nao e possivel atribuir 'int' a variavel do tipo 'String' (contexto: declaracao de variavel)
+Linha 20: [condicao invalida]: a condicao de 'if' deve ser boolean, mas e 'int' (contexto: estrutura de controlo if)
+```
+
+No relatório final, estas mensagens aparecem misturadas com os erros sintáticos,
+ordenadas por linha, sem cabeçalhos separados por categoria:
+
+```
+==================================================
+ERROS ENCONTRADOS
+=================
+
+[1] Linha 4: [declaracao de atributo]: esperado ';' apos 'x', mas encontrado 'public' (PUBLIC)
+[2] Linha 8: [variavel nao declarada] em 'y': o identificador 'y' nao foi declarado (contexto: uso de identificador)
+
+---
+
+Compilacao terminada com 2 erro(s).
+```
+
+### Adicionar uma nova verificação semântica
+
+1. Criar um método `verificarXxx(...)` no `AnalisadorSemantico`;
+2. Chamá-lo a partir de `analisarComando(...)` ou de `tipoDe(...)`, conforme se
+   aplique a comandos ou a expressões;
+3. Registar eventuais erros com `registar(linha, lexema, tipoErro, descricao, contexto)`;
+4. **Nunca** lançar exceção — acumular o erro e continuar (não parar no primeiro).
+
+Como o parser já constrói a AST e a tabela, normalmente **não é preciso tocar no
+parser** para adicionar regras semânticas.
 
 ---
 

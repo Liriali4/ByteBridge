@@ -2,12 +2,19 @@
 
 ## O que é este compilador
 
-Este compilador processa um subconjunto da linguagem Java. Atualmente implementa duas fases:
+Este compilador processa um subconjunto da linguagem Java. Implementa três fases:
 
 - Fase 1 — Análise Léxica: reconhece tokens (palavras, números, operadores, etc.)
-- Fase 2 — Análise Sintática: verifica a estrutura do programa e constrói a tabela de símbolos
+- Fase 2 — Análise Sintática: verifica a estrutura do programa, constrói a tabela
+  de símbolos e a árvore sintática (AST)
+- Fase 3 — Análise Semântica: verifica tipos, declarações, chamadas de métodos e
+  condições das estruturas de controlo
 
-O compilador não gera código executável. O seu objetivo é verificar a correção léxica e sintática do código fonte e produzir uma tabela de símbolos.
+O compilador não gera código executável. O seu objetivo é verificar a correção
+léxica, sintática e semântica do código fonte e produzir uma tabela de símbolos.
+Os erros são apresentados numa lista única, ordenada por linha, como num
+compilador real. Internamente continuam a existir erros sintáticos e semânticos,
+mas essa separação não aparece no relatório final.
 
 ---
 
@@ -35,7 +42,10 @@ Compilador/
 │   │   └── NoExpressao.java       ← nó de expressão
 │   ├── errors/
 │   │   ├── ErroSintatico.java     ← representação de erro
+│   │   ├── ErroSemantico.java     ← erro produzido pela Fase 3
 │   │   └── ExcecaoSintatica.java  ← exceção de emergência
+│   ├── semantic/
+│   │   └── AnalisadorSemantico.java ← fase 3
 │   └── utils/
 │       └── TipoToken.java         ← enum de categorias de token
 ├── testes/
@@ -108,6 +118,52 @@ java -cp build/classes Main.Main testes/teste_parser_valido.java --tabela
 
 ---
 
+## Fluxo da Aplicação
+
+Ao executar o compilador, as fases são chamadas nesta ordem:
+
+```
+Ficheiro fonte
+   ↓
+AnalisadorLexico
+   ↓ tokens
+AnalisadorSintatico
+   ↓ AST + tabela de símbolos
+AnalisadorSemantico
+   ↓ lista de erros semânticos
+Relatório final único
+```
+
+A árvore sintática abstrata (AST) é construída pelo parser e representa classes,
+métodos, comandos e expressões. A Fase 3 percorre essa árvore para inferir tipos,
+validar expressões e verificar comandos. A tabela de símbolos guarda classes,
+métodos, atributos, parâmetros e variáveis locais; a análise semântica usa essa
+tabela para consultar assinaturas de métodos e nomes de classes.
+
+Se o parser precisar recuperar de um erro grave pelo modo pânico, pode criar nós
+`erro` na AST. O analisador semântico ignora essas subárvores inválidas para não
+produzir erros em cascata sobre código que já ficou sintaticamente comprometido.
+
+Verificações semânticas implementadas:
+
+- variáveis usadas sem declaração;
+- variáveis declaradas duas vezes no mesmo escopo;
+- atribuições, inicializações e retornos com tipos incompatíveis;
+- chamadas de métodos com número, tipo ou ordem de argumentos incorretos;
+- condições de `if`, `while`, `for` e operador ternário que não sejam `boolean`;
+- operadores aplicados a tipos inválidos;
+- índices de array que não sejam numéricos.
+
+Exemplos de erros semânticos:
+
+```
+Linha 8: [variavel nao declarada] em 'x': o identificador 'x' nao foi declarado (contexto: uso de identificador)
+Linha 12: [argumento incompativel] em 'somar': argumento 1 do tipo 'String' incompativel com o parametro 'int' de 'somar(int a, int b)' (contexto: chamada de metodo)
+Linha 20: [condicao invalida]: a condicao de 'while' deve ser boolean, mas e 'int' (contexto: estrutura de controlo while)
+```
+
+---
+
 ## Ficheiros de Teste
 
 ### teste_parser_valido.java
@@ -126,7 +182,25 @@ Use para verificar o comportamento do modo pânico e a recuperação de erros.
 
 Código com operadores bitwise (`&`, `|`, `^`) e operador ternário (`?:`).
 
-Use para verificar o reconhecimento de operadores avançados.
+Use para verificar o reconhecimento de operadores avançados. Deve compilar sem
+erros sintáticos nem semânticos.
+
+### teste_semantico_erros.java
+
+Código **sintaticamente válido** com dez erros semânticos propositados (variável
+não declarada, dupla declaração, atribuições incompatíveis, condições não-boolean
+e chamadas de método com argumentos errados).
+
+Use para verificar a Fase 3: deve produzir uma lista única com os erros
+semânticos esperados, sem separar o relatório por categoria.
+
+### teste_panico.java
+
+Código com vários erros sintáticos espalhados por várias linhas (`;`, `)`
+em falta, expressões incompletas).
+
+Use para verificar que o modo pânico recupera de cada erro, aponta a linha
+correta e não entra em ciclo infinito.
 
 ### teste_completo.txt / teste_demonstracao.txt
 
@@ -187,28 +261,67 @@ public class NomeDaClasse {
 
 ## Interpretação dos Erros
 
-### Formato de um erro
+Os erros são apresentados numa **lista única**, ordenada pela linha onde ocorrem.
+O relatório final não separa "erros sintáticos" e "erros semânticos", embora o
+compilador mantenha essas classes internamente.
 
 ```
-Erro Sintatico na linha N [contexto]: esperado X, mas encontrado Y (TIPO)
+==================================================
+ERROS ENCONTRADOS
+=================
+
+[1] Linha N: [contexto]: esperado X, mas encontrado Y (TIPO)
+[2] Linha M: [tipo do erro] em 'lexema': descricao (contexto: ...)
+
+---
+
+Compilacao terminada com 2 erro(s).
+
+Total de erros: 2
+```
+
+### Erros de estrutura do código
+
+Formato típico:
+```
+Linha N: [contexto]: esperado X [apos 'w'], mas encontrado Y (TIPO)
 ```
 
 Exemplo:
 ```
-Erro Sintatico na linha 5 [declaracao de variavel local]: esperado ';', mas encontrado 'x' (IDENTIFICADOR)
+Linha 2: [declaracao de atributo]: esperado ';' apos 'x', mas encontrado 'public' (PUBLIC)
 ```
-
-### Campos do erro
 
 | Campo | Significado |
 |---|---|
-| `linha N` | Número da linha onde o erro foi detetado |
+| `linha N` | Linha onde o erro realmente ocorre (para `;`/`)`/`]`/`}` em falta, é a linha do fim da construção) |
 | `[contexto]` | Parte da gramática onde ocorreu o erro |
 | `esperado X` | O que o compilador esperava encontrar |
+| `apos 'w'` | (opcional) lexema após o qual faltou o símbolo |
 | `encontrado Y` | O que estava realmente no código |
 | `(TIPO)` | Categoria do token encontrado |
 
-### Contextos comuns
+### Erros semânticos
+
+Formato:
+```
+Linha N: [tipo do erro] em 'lexema': descricao (contexto: ...)
+```
+
+Tipos de erro semântico produzidos:
+
+| Tipo do erro | Significado |
+|---|---|
+| `variavel nao declarada` | Identificador usado sem ter sido declarado |
+| `variavel declarada duas vezes` | Redeclaração no mesmo escopo |
+| `atribuicao incompativel` | Valor incompatível com o tipo do destino (ex.: `int ← String`) |
+| `condicao invalida` | Condição de `if`/`while`/`for` que não é `boolean` |
+| `numero de argumentos invalido` | Chamada com número de argumentos errado |
+| `argumento incompativel` | Argumento com tipo incompatível com o parâmetro |
+| `metodo nao declarado` | Chamada a um método que não existe |
+| `operacao invalida` | Operador aplicado a operandos de tipo errado |
+
+### Contextos comuns (erros sintáticos)
 
 | Contexto | Significado |
 |---|---|
@@ -226,24 +339,19 @@ Erro Sintatico na linha 5 [declaracao de variavel local]: esperado ';', mas enco
 | `comando for` | Erro num `for` |
 | `comando return` | Erro num `return` |
 | `expressao primaria` | Erro numa expressão |
-| `uso de identificador` | Variável usada sem ter sido declarada |
-| `declaracao de classe duplicada` | Nome de classe já declarado |
+| `comando de expressao` | Erro num comando que é uma expressão |
 
-### Erros de declaração duplicada
+### Erros de declaração duplicada e de identificador não declarado
 
-```
-Erro Sintatico na linha 8 [declaracao de variavel local duplicada]: esperado declaracao unica, mas encontrado 'x'
-```
-
-Significa que o identificador `x` já foi declarado no mesmo escopo.
-
-### Erros de identificador não declarado
+Estes são erros produzidos pela Fase 3:
 
 ```
-Erro Sintatico na linha 12 [uso de identificador]: esperado identificador declarado, mas encontrado 'y'
+[1] Linha 8: [variavel declarada duas vezes] em 'x': o identificador 'x' ja foi declarado neste escopo (contexto: declaracao de variavel)
+[2] Linha 12: [variavel nao declarada] em 'y': o identificador 'y' nao foi declarado (contexto: uso de identificador)
 ```
 
-Significa que `y` foi usado numa expressão mas nunca foi declarado. Nota: identificadores que começam com maiúscula (nomes de classes) não são verificados.
+Significam, respetivamente, que `x` foi declarado duas vezes no mesmo escopo e que
+`y` foi usado sem ter sido declarado.
 
 ---
 
@@ -332,7 +440,7 @@ public class Teste { }
 
 Erro esperado:
 ```
-Erro Sintatico na linha 1 [declaracao de pacote]: esperado ';', mas encontrado 'public' (PUBLIC)
+Linha 1: [declaracao de pacote]: esperado ';', mas encontrado 'public' (PUBLIC)
 ```
 
 ### Variável não declarada
@@ -348,7 +456,7 @@ public class Teste {
 
 Erro esperado:
 ```
-Erro Sintatico na linha 4 [uso de identificador]: esperado identificador declarado, mas encontrado 'x'
+Linha 4: [variavel nao declarada] em 'x': o identificador 'x' nao foi declarado (contexto: uso de identificador)
 ```
 
 ### Declaração duplicada
@@ -365,7 +473,7 @@ public class Teste {
 
 Erro esperado:
 ```
-Erro Sintatico na linha 4 [declaracao de variavel local duplicada]: esperado declaracao unica, mas encontrado 'x'
+Linha 4: [variavel declarada duas vezes] em 'x': o identificador 'x' ja foi declarado neste escopo (contexto: declaracao de variavel)
 ```
 
 ---
@@ -378,17 +486,16 @@ Exemplo de saída com múltiplos erros:
 
 ```
 ==================================================
-COMPILACAO CONCLUIDA COM ERROS
-==================================================
-
-Foram encontrados 3 erros.
-
 ERROS ENCONTRADOS
------------------
+=================
 
-[1] Erro Sintatico na linha 3 [declaracao de pacote]: esperado ';', mas encontrado 'public' (PUBLIC)
-[2] Erro Sintatico na linha 7 [condicao if]: esperado ')', mas encontrado '{' (ABRE_CHAVE)
-[3] Erro Sintatico na linha 10 [uso de identificador]: esperado identificador declarado, mas encontrado 'resultado'
+[1] Linha 3: [declaracao de pacote]: esperado ';', mas encontrado 'public' (PUBLIC)
+[2] Linha 7: [condicao if]: esperado ')', mas encontrado '{' (ABRE_CHAVE)
+[3] Linha 10: [variavel nao declarada] em 'resultado': o identificador 'resultado' nao foi declarado (contexto: uso de identificador)
+
+---
+
+Compilacao terminada com 3 erro(s).
 
 Total de erros: 3
 ```

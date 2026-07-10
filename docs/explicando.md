@@ -2,10 +2,11 @@
 
 ## 1. Ideia geral
 
-Este compilador foi desenvolvido em Java para demonstrar as duas primeiras fases classicas de compilacao:
+Este compilador foi desenvolvido em Java para demonstrar as tres primeiras fases classicas de compilacao:
 
 1. **Analise lexica:** transforma caracteres em tokens.
-2. **Analise sintatica:** verifica se a sequencia de tokens respeita a gramatica da linguagem.
+2. **Analise sintatica:** verifica se a sequencia de tokens respeita a gramatica e constroi a tabela de simbolos e a arvore sintatica (AST).
+3. **Analise semantica:** verifica tipos, declaracoes, chamadas de metodos e condicoes.
 
 A linguagem aceite e inspirada em Java. O projeto reconhece classes, metodos, atributos, variaveis locais, parametros, blocos, comandos e expressoes com varios operadores.
 
@@ -19,26 +20,32 @@ O fluxo principal e:
 ficheiro fonte
     |
     v
-AnalisadorLexico
-    |
-    v
-tokens
+AnalisadorLexico  ->  tokens
     |
     v
 AnalisadorSintatico
     |
     +--> validacao sintatica
-    +--> recuperacao de erros
+    +--> recuperacao de erros (modo panico)
     +--> tabela de simbolos
+    +--> arvore sintatica (AST)
     |
     v
-relatorio final
+AnalisadorSemantico
+    |
+    +--> tipos, declaracoes, chamadas, condicoes
+    +--> lista de erros semanticos
+    |
+    v
+relatorio final (erros sintaticos + semanticos)
 ```
 
-O ponto de entrada esta em `Main.Main`. Ele resolve o ficheiro, cria o lexer, cria o parser e chama:
+O ponto de entrada esta em `Main.Main`. Ele resolve o ficheiro, cria o lexer, cria o parser, obtem a AST e a tabela, e por fim executa a analise semantica:
 
 ```java
-analisadorSintatico.analisarPrograma();
+NoAST arvore = analisadorSintatico.analisarPrograma();
+List<ErroSemantico> erros =
+        new AnalisadorSemantico(arvore, analisadorSintatico.obterTabelaSimbolos()).analisar();
 ```
 
 No fim, imprime:
@@ -338,30 +345,42 @@ Cada mensagem informa:
 Exemplo:
 
 ```text
-Erro Sintatico na linha 6 [condicao if]: esperado ')', mas encontrado '{' (ABRE_CHAVE)
+Erro na linha 6 [condicao if]: esperado ')' apos '0', mas encontrado '{' (ABRE_CHAVE)
 ```
 
-Tambem existem erros semanticos simples:
-
-- declaracao duplicada;
-- uso de identificador nao declarado.
+Os erros semanticos (declaracao duplicada, identificador nao declarado, tipos,
+argumentos, condicoes) pertencem agora a Fase 3 e sao representados por
+`errors.ErroSemantico` (ver seccao 21).
 
 ## 17. Modo panico
 
-O modo panico permite continuar a analise depois de um erro. Em vez de terminar no primeiro problema, o parser avanca ate encontrar um token seguro.
+O modo panico permite continuar a analise depois de um erro. Em vez de terminar
+no primeiro problema, o parser regista o erro e avanca ate um token seguro.
 
-A sincronizacao foi separada por contexto:
+Dois cuidados importantes foram acrescentados:
+
+1. **O erro e registado ANTES da sincronizacao**, com a linha correta. Para
+   simbolos terminadores em falta (`;`, `)`, `]`, `}`), a linha usada e a do fim
+   da construcao (ultimo token valido), e nao a linha onde a analise parou. Assim
+   um `;` esquecido deixa de "saltar" para a linha seguinte.
+2. **Cada ciclo de analise garante progresso** (`garantirProgresso`), evitando
+   ciclos infinitos.
+
+A sincronizacao e separada por contexto (um metodo por contexto):
 
 ```text
+classe      -> class
+metodo      -> }, inicio de membro
 declaracoes -> ;, }, inicio de declaracao
 blocos      -> }, {, inicio de comando
-expressoes  -> ;, ), ], ,, }, :, {
+expressoes  -> ;, ), ], ,, }, :
+parametros  -> ), ,, {
 estruturas  -> ), {, }, ;, else
 ```
 
-Exemplo: se faltar `;` numa declaracao, o parser procura o fim da declaracao ou o inicio da proxima. Se faltar `)` numa condicao, procura delimitadores proprios de estruturas.
-
-Isto reduz erros em cascata e evita loops infinitos.
+Exemplo: se faltar `;` numa declaracao, o parser procura o fim da declaracao ou o
+inicio da proxima. Se faltar `)` numa condicao, procura delimitadores de
+estruturas. Isto reduz erros em cascata e evita loops infinitos.
 
 ## 18. Saida final
 
@@ -419,5 +438,24 @@ Com estas fases, o projeto consegue:
 - criar escopos;
 - preencher tabela de simbolos;
 - atribuir enderecos simulados;
-- recuperar de erros por modo panico;
+- construir a arvore sintatica (AST);
+- recuperar de erros por modo panico com a linha correta;
 - apresentar um resumo final adequado para defesa.
+
+## 21. Fase 3: analisador semantico
+
+A Fase 3 e uma camada separada (`semantic.AnalisadorSemantico`) que recebe a AST e
+a tabela de simbolos da Fase 2 e verifica:
+
+- variavel nao declarada;
+- variavel declarada duas vezes no mesmo escopo;
+- incompatibilidade de tipos e atribuicoes incompativeis
+  (`int <- String`, `boolean <- int`, `double <- boolean`, ...);
+- argumentos de metodos: quantidade, tipo e ordem;
+- condicoes de `if`/`while`/`for` que devem ser `boolean`;
+- compatibilidade do valor de `return` com o tipo do metodo.
+
+A analise nao para no primeiro erro: acumula tudo e produz um relatorio completo.
+Os tipos resultantes de erros anteriores tornam-se `desconhecido` para evitar
+erros em cascata. Cada erro informa linha, lexema, tipo do erro, descricao e
+contexto. Detalhes em `explicando_fase03_semantico.md`.

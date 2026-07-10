@@ -6,6 +6,47 @@ Baseado na implementação real de `AnalisadorSintatico.java`
 
 ---
 
+## ATUALIZAÇÃO — Correções ao Modo Pânico
+
+Esta secção resume as melhorias feitas ao modo pânico. O restante documento
+mantém a explicação de base; onde houver diferença, prevalece esta secção.
+
+1. **A linha do erro passou a ser sempre a linha real.** O erro é registado
+   **antes** de qualquer sincronização. Para símbolos terminadores em falta
+   (`;`, `)`, `]`, `}`, `:`), a linha usada é a do **último token válido
+   consumido** (o fim da construção), e não a linha onde a sincronização parou.
+   Foi este o problema apontado na defesa: um `;` esquecido apontava para a linha
+   seguinte. Agora `int x` sem `;` reporta na linha do `x`.
+
+   ```java
+   private void relatarSimboloEmFalta(String esperado, String contexto) {
+       String semAspas = esperado.replace("'", "");
+       if (TERMINADORES.contains(semAspas)) {
+           registrarErro(ultimoTokenConsumido.linha, esperado,
+                         descrever(tokenAtual), contexto, ultimoTokenConsumido.lexema);
+       } else {
+           registrarErro(tokenAtual.linha, esperado, descrever(tokenAtual), contexto, "");
+       }
+   }
+   ```
+
+2. **Sincronização específica por contexto.** Deixou de existir uma sincronização
+   genérica pública. `avancarAte(Set)` é só o mecanismo interno de baixo nível; a
+   estratégia é escolhida por métodos próprios: `sincronizarClasse`,
+   `sincronizarMetodo`, `sincronizarDeclaracao`, `sincronizarBloco`,
+   `sincronizarComando`, `sincronizarExpressao`, `sincronizarParametros`,
+   `sincronizarEstrutura`.
+
+3. **Prevenção de ciclos infinitos.** Cada ciclo de análise verifica se consumiu
+   pelo menos um token; se não, força um avanço (`garantirProgresso`). Isto evita
+   que um token de sincronização não consumido origine um ciclo infinito.
+
+4. **Verificações semânticas saíram do parser.** "Identificador não declarado" e
+   "declaração duplicada" deixaram de ser erros sintáticos: passaram para a Fase 3
+   (`ErroSemantico`).
+
+---
+
 # PARTE 1 — VISÃO GERAL
 
 ## O que é o Modo Pânico

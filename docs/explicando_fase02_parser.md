@@ -443,18 +443,24 @@ analisarExpressaoPrimaria()
     └─ senão → relatarErro + sincronizarExpressao
 ```
 
-### Verificação de Identificadores Não Declarados
+### Identificadores em Expressões (sem verificação semântica)
 
-Em `analisarExpressaoPrimaria()`, quando encontra um identificador:
+Em `analisarExpressaoPrimaria()`, quando encontra um identificador, o parser
+apenas **cria o nó da AST** e avança:
 
 ```java
-Simbolo simbolo = tabelaSimbolos.resolver(identificador.lexema);
-if (simbolo == null && !Character.isUpperCase(identificador.lexema.charAt(0))) {
-    listaErros.add(new ErroSintatico(..., "uso de identificador"));
+if (ehIdentificador()) {
+    NoAST no = new NoExpressao("identificador", tokenAtual.lexema, tokenAtual.linha);
+    avancar();
+    return no;
 }
 ```
 
-Identificadores que começam com maiúscula são assumidos como nomes de classes e não são verificados.
+> **Mudança importante:** a antiga verificação de "identificador não declarado"
+> foi **removida do parser**. Verificar se uma variável existe é uma decisão
+> *semântica*, não sintática, e passou para a Fase 3. O parser limita-se a
+> registar a estrutura; quem decide se `y` está declarada é o
+> `AnalisadorSemantico`. O mesmo se aplica à deteção de declarações duplicadas.
 
 ---
 
@@ -462,11 +468,41 @@ Identificadores que começam com maiúscula são assumidos como nomes de classes
 
 ### O que é
 
-Quando o parser encontra um token inesperado, não pode simplesmente parar. O modo pânico é a estratégia de recuperação que permite continuar a análise e encontrar mais erros no mesmo ficheiro.
+Quando o parser encontra um token inesperado, não pode simplesmente parar. O modo
+pânico é a estratégia de recuperação que permite continuar a análise e encontrar
+o **maior número possível de erros úteis** no mesmo ficheiro.
 
-### Onde começa
+### Princípio central: registar o erro ANTES de sincronizar
 
-O modo pânico começa sempre que `relatarErro()` é chamado e a análise não consegue continuar normalmente. Os métodos de sincronização são chamados explicitamente nos pontos de recuperação.
+O erro é **sempre registado antes** de a recuperação começar. Assim, a linha
+apresentada é a do ponto onde o erro realmente ocorreu, e nunca a linha onde a
+sincronização terminou.
+
+Para **símbolos terminadores em falta** (`;`, `)`, `]`, `}`, `:`), a linha usada é
+a do **último token válido consumido** — o fim da construção — e não a do token
+onde a análise parou. Isto corrige o problema em que um `;` esquecido apontava
+para linhas seguintes:
+
+```java
+private void relatarSimboloEmFalta(String esperado, String contexto) {
+    String semAspas = esperado.replace("'", "");
+    if (TERMINADORES.contains(semAspas)) {
+        // linha do fim da construção (ex.: a linha do 'x' em "int x")
+        registrarErro(ultimoTokenConsumido.linha, esperado,
+                      descrever(tokenAtual), contexto, ultimoTokenConsumido.lexema);
+    } else {
+        registrarErro(tokenAtual.linha, esperado, descrever(tokenAtual), contexto, "");
+    }
+}
+```
+
+Exemplo: `int x` sem `;` (o `public` vem só na linha seguinte) produz agora
+
+```
+Erro na linha 2 [declaracao de atributo]: esperado ';' apos 'x', mas encontrado 'public' (PUBLIC)
+```
+
+— a linha **2** (do `x`), e não a linha do `public`.
 
 ### Fluxo do Modo Pânico
 
@@ -474,94 +510,93 @@ O modo pânico começa sempre que `relatarErro()` é chamado e a análise não c
 Token inesperado encontrado
         │
         ▼
-relatarErro(esperado, contexto)
-    └─ cria ErroSintatico e adiciona a listaErros
-    └─ guarda chave do erro em ultimoErro (evita duplicados)
+relatarErro / relatarSimboloEmFalta   ← REGISTA primeiro (linha correta)
         │
         ▼
-sincronizar(conjuntoSincronizacao)
-    └─ loop: enquanto não fim() e tokenAtual não está no conjunto
-        └─ avancar()  ← descarta tokens até encontrar ponto seguro
+sincronizarXxx()                       ← só DEPOIS recupera
+    └─ avancarAte(conjunto do contexto)
         │
         ▼
-Ponto de sincronização encontrado
+garantirProgresso(marca)               ← evita ciclos infinitos
         │
         ▼
-Análise continua a partir desse ponto
+Análise continua a partir do ponto seguro
 ```
 
-### Métodos de Sincronização
+### Sincronização específica por contexto
 
-#### sincronizar(Set<String> sincronizacao)
+A sincronização genérica foi eliminada. Existe agora um método por contexto,
+cada um com o seu próprio conjunto de tokens de paragem. `avancarAte(Set)` é
+apenas o mecanismo de baixo nível (avançar até um token de paragem); a estratégia
+é sempre escolhida pelo contexto:
+
+| Método | Conjunto | Para em |
+|--------|----------|---------|
+| `sincronizarClasse()` | `SINCRONIZACAO_CLASSE` | `class` (ou EOF) |
+| `sincronizarMetodo()` | `SINCRONIZACAO_MEMBRO` | `}` ou início de membro |
+| `sincronizarDeclaracao()` | `SINCRONIZACAO_DECLARACAO` | `;` `}` ou início de declaração (consome `;`) |
+| `sincronizarBloco()` | `SINCRONIZACAO_BLOCO` | `}` ou início de comando |
+| `sincronizarComando()` | `SINCRONIZACAO_BLOCO` | idem (consome `;`) |
+| `sincronizarExpressao()` | `SINCRONIZACAO_EXPRESSAO` | `;` `)` `]` `,` `}` `:` |
+| `sincronizarParametros()` | `SINCRONIZACAO_PARAMETROS` | `)` `,` `{` |
+| `sincronizarEstrutura()` | `SINCRONIZACAO_ESTRUTURA` | `)` `{` `}` `;` `else` |
+
+### Prevenção de ciclos infinitos
+
+Cada ciclo de análise (`while` sobre tipos, membros, comandos) verifica se
+consumiu pelo menos um token; caso contrário, força um avanço:
 
 ```java
-private void sincronizar(Set<String> sincronizacao)
+private void garantirProgresso(int marcaInicial) {
+    if (totalAvancos == marcaInicial && !fim()) {
+        avancar();
+    }
+}
 ```
 
-- Descarta tokens até encontrar um que esteja no conjunto
-- Não consome o token de sincronização (apenas para nele)
-
-#### sincronizarComando()
-
-```java
-private void sincronizarComando()
-```
-
-- Usa `SINCRONIZACAO_BLOCO`
-- Após sincronizar, consome `;` se presente
-- Usado após erros em comandos
-
-#### sincronizarDeclaracao()
-
-```java
-private void sincronizarDeclaracao()
-```
-
-- Usa `SINCRONIZACAO_DECLARACAO`
-- Após sincronizar, consome `;` se presente
-- Usado após erros em declarações
-
-#### sincronizarExpressao()
-
-```java
-private void sincronizarExpressao()
-```
-
-- Usa `SINCRONIZACAO_EXPRESSAO`
-- Não consome token de sincronização
-- Usado após erros em expressões
-
-#### sincronizarEstrutura()
-
-```java
-private void sincronizarEstrutura()
-```
-
-- Usa `SINCRONIZACAO_ESTRUTURA`
-- Usado após erros em estruturas de controlo (if, while)
-
-### Tokens de Sincronização por Contexto
-
-| Contexto | Tokens de Sincronização | Motivo |
-|---|---|---|
-| Declarações | `;` `}` `class` `public` `private` `protected` `static` `final` `void` tipos | Marcam fim de declaração ou início de nova |
-| Blocos | `}` `{` `if` `while` `for` `return` `break` `continue` tipos | Marcam início/fim de bloco ou novo comando |
-| Expressões | `;` `)` `]` `,` `}` `:` `{` | Marcam fim de expressão |
-| Estruturas | `)` `{` `}` `;` `else` | Marcam fim de condição ou corpo |
+Sem esta guarda, um token que pertença ao conjunto de sincronização mas não seja
+consumido pela regra poderia originar um ciclo infinito (o parser voltaria a
+tentar a mesma regra sobre o mesmo token, indefinidamente).
 
 ### Prevenção de Erros Duplicados
 
 ```java
-private void relatarErro(String esperado, String contexto) {
-    String chave = tokenAtual.linha + "|" + esperado + "|" + tokenAtual.lexema + "|" + contexto;
+private void registrarErro(int linha, String esperado, String recebido, String contexto, String apos) {
+    String chave = linha + "|" + esperado + "|" + recebido + "|" + contexto;
     if (!chave.equals(ultimoErro)) {
-        listaErros.add(new ErroSintatico(...));
+        listaErros.add(new ErroSintatico(linha, esperado, recebido, contexto, apos));
         ultimoErro = chave;
     }
 }
 ```
 
-A chave combina linha, esperado, recebido e contexto. Se o mesmo erro seria registado duas vezes (por exemplo, por chamadas recursivas), é ignorado.
+A chave combina linha, esperado, recebido e contexto. Se o mesmo erro seria
+registado duas vezes (por exemplo, por chamadas recursivas), é ignorado.
+
+---
+
+## Construção da AST
+
+Além de verificar a gramática e preencher a tabela de símbolos, o parser agora
+**constrói uma árvore sintática real** (`ast.NoAST`). Cada método de análise de
+expressão/comando devolve o nó correspondente, que o método chamador liga como
+filho. Por exemplo, os níveis de precedência constroem árvores binárias
+associativas à esquerda:
+
+```java
+private NoAST analisarExpressaoAditiva() {
+    NoAST no = analisarExpressaoMultiplicativa();
+    while (ehLexema("+") || ehLexema("-")) {
+        String operador = tokenAtual.lexema;
+        int linha = tokenAtual.linha;
+        avancar();
+        no = binario(operador, linha, no, analisarExpressaoMultiplicativa());
+    }
+    return no;
+}
+```
+
+Esta árvore é o que a **Fase 3** percorre. Ver `explicando_fase03_semantico.md`.
 
 ---
 
