@@ -47,6 +47,63 @@ public class TabelaSimbolos {
         return escopoAtual == null ? null : escopoAtual.resolver(lexema);
     }
 
+    // ==================== CONSULTAS PARA A ANALISE SEMANTICA ====================
+
+    /** A variavel/simbolo existe, visivel a partir do escopo atual? */
+    public boolean existe(String lexema) {
+        return resolver(lexema) != null;
+    }
+
+    /** O simbolo esta declarado exactamente no escopo actual (nao herdado)? */
+    public boolean declaradoNoEscopoAtual(String lexema) {
+        return escopoAtual != null && escopoAtual.contemNoEscopoAtual(lexema);
+    }
+
+    /** O simbolo esta declarado nalgum escopo superior (mas nao no atual)? */
+    public boolean declaradoEmEscopoSuperior(String lexema) {
+        if (escopoAtual == null || escopoAtual.contemNoEscopoAtual(lexema)) {
+            return false;
+        }
+        return escopoAtual.obterPai() != null && escopoAtual.obterPai().resolver(lexema) != null;
+    }
+
+    /** Tipo de dado de um simbolo visivel, ou null se nao existir. */
+    public String tipoDe(String lexema) {
+        Simbolo simbolo = resolver(lexema);
+        return simbolo == null ? null : simbolo.obterTipoDado();
+    }
+
+    /** Um simbolo visivel esta marcado como inicializado? */
+    public boolean estaInicializada(String lexema) {
+        Simbolo simbolo = resolver(lexema);
+        return simbolo != null && simbolo.estaInicializado();
+    }
+
+    /**
+     * Procura, em TODOS os escopos, um metodo com o nome dado. Ao contrario de
+     * resolver(), nao depende do escopo actual -- util na Fase 3, onde a analise
+     * ja percorre a tabela toda e o escopo actual ja voltou ao global.
+     */
+    public Simbolo procurarMetodo(String nome) {
+        for (Escopo escopo : todosEscopos) {
+            for (Simbolo simbolo : escopo.obterSimbolos().values()) {
+                if ("metodo".equals(simbolo.obterCategoria()) && simbolo.obterLexema().equals(nome)) {
+                    return simbolo;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Existe algum metodo declarado com este nome? */
+    public boolean metodoExiste(String nome) {
+        return procurarMetodo(nome) != null;
+    }
+
+    public List<Escopo> obterEscopos() {
+        return todosEscopos;
+    }
+
     public String nomeEscopoAtual() {
         return escopoAtual == null ? "global" : escopoAtual.obterNome();
     }

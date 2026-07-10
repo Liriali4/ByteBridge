@@ -56,6 +56,55 @@ public class Simbolo {
         this.tipoDado = tipoDado;
     }
 
+    public String obterTipoVariavel() {
+        return tipoVariavel;
+    }
+
+    public String obterEscopo() {
+        return escopo;
+    }
+
+    public String obterValor() {
+        return valor;
+    }
+
+    public int obterEndereco() {
+        return endereco;
+    }
+
+    public int obterDimensoes() {
+        return dimensoes;
+    }
+
+    public boolean estaInicializado() {
+        return inicializado;
+    }
+
+    public String obterTipoRetorno() {
+        return tipoRetorno;
+    }
+
+    /**
+     * Devolve a assinatura legivel de um metodo, no formato
+     * "tipoRetorno nome(tipo1, tipo2, ...)". Util para mensagens de erro
+     * semantico sobre compatibilidade de argumentos.
+     */
+    public String obterAssinatura() {
+        StringBuilder assinatura = new StringBuilder();
+        assinatura.append(nuloParaVazio(tipoRetorno)).append(" ").append(lexema).append("(");
+        for (int i = 0; i < parametros.size(); i++) {
+            if (i > 0) {
+                assinatura.append(", ");
+            }
+            // Cada parametro esta guardado como "tipo nome"; mostramos apenas o tipo.
+            String parametro = parametros.get(i);
+            int espaco = parametro.lastIndexOf(' ');
+            assinatura.append(espaco > 0 ? parametro.substring(0, espaco) : parametro);
+        }
+        assinatura.append(")");
+        return assinatura.toString();
+    }
+
     public void definirTipoVariavel(String tipoVariavel) {
         this.tipoVariavel = tipoVariavel;
     }
